@@ -1,0 +1,28 @@
+services:
+  taskforge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: taskforge
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      - APP_NAME=${APP_NAME:-TaskForge}
+      - APP_ENV=${APP_ENV:-production}
+      - TZ=${TZ:-America/Sao_Paulo}
+      - SECRET_KEY=${SECRET_KEY:-taskforge-production-secret-key-change-me}
+      - DEFAULT_ADMIN_USER=${DEFAULT_ADMIN_USER:-admin}
+      - DEFAULT_ADMIN_EMAIL=${DEFAULT_ADMIN_EMAIL:-admin@taskforge.local}
+      - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD:-Admin@123456}
+      - DATA_DIR=/app/data
+    volumes:
+      - taskforge_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  taskforge_data:
