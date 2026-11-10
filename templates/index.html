@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#09090b" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>TaskForge • Gestão de Tarefas Personalizável</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', 'sans-serif'],
+          },
+        }
+      }
+    };
+  </script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(161, 161, 170, 0.25); border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(236, 72, 153, 0.5); }
+    .glow-border {
+      position: relative;
+    }
+    .glow-border::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      padding: 1px;
+      background: linear-gradient(135deg, rgba(249,115,22,0.5), rgba(236,72,153,0.5), rgba(168,85,247,0.5));
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+    }
+    .kanban-drag-over {
+      border-color: #ec4899 !important;
+      background: rgba(236, 72, 153, 0.08) !important;
+    }
+  </style>
+</head>
+<body class="bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans antialiased selection:bg-pink-500 selection:text-white min-h-screen flex flex-col overflow-x-hidden transition-colors duration-300">
+
+  <!-- =================================================================== -->
+  <!-- LOGIN OVERLAY SCREEN -->
+  <!-- =================================================================== -->
+  <div id="login-screen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/95 backdrop-blur-xl hidden">
+    <div class="w-full max-w-md rounded-3xl bg-zinc-900/80 border border-zinc-800/80 p-8 shadow-2xl glow-border">
+      <div class="flex items-center gap-3 mb-6">
+        <img src="/static/icon.svg" alt="TaskForge" class="w-11 h-11 rounded-2xl shadow-lg" />
+        <div>
+          <h1 class="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-orange-500 via-pink-500 to-purple-500 bg-clip-text text-transparent">
+            TaskForge
+          </h1>
+          <p class="text-xs text-zinc-400 tracking-wide uppercase">Workspace Inteligente de Tarefas</p>
+        </div>
+      </div>
+
+      <form id="login-form" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wide text-zinc-400 mb-1.5">Usuário ou E-mail</label>
+          <input id="login-username" type="text" required value="admin"
+            class="w-full rounded-2xl bg-zinc-950/90 border border-zinc-800 px-4 py-3 text-sm text-zinc-100 focus:outline-none focus:border-pink-500 transition-all duration-300"
+            placeholder="admin" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wide text-zinc-400 mb-1.5">Senha</label>
+          <input id="login-password" type="password" required value="Admin@123456"
+            class="w-full rounded-2xl bg-zinc-950/90 border border-zinc-800 px-4 py-3 text-sm text-zinc-100 focus:outline-none focus:border-pink-500 transition-all duration-300"
+            placeholder="••••••••" />
+        </div>
+        <div id="login-error" class="hidden text-xs text-rose-400 bg-rose-500/10 border border-rose-500/30 rounded-xl p-3"></div>
+        <button type="submit"
+          class="w-full rounded-2xl bg-gradient-to-r from-orange-500 via-pink-500 to-purple-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-pink-500/20 hover:-translate-y-0.5 transition-all duration-300">
+          Entrar no Workspace
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- MAIN APPLICATION SHELL -->
+  <!-- =================================================================== -->
+  <div id="app-shell" class="flex-1 flex min-h-screen">
+
+    <!-- SIDEBAR (Desktop persistent / Mobile drawer) -->
+    <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-72 transform -translate-x-full lg:translate-x-0 lg:static lg:flex lg:flex-col bg-zinc-50/90 dark:bg-zinc-900/70 backdrop-blur-xl border-r border-zinc-200/80 dark:border-zinc-800/80 transition-transform duration-300">
+      <!-- Brand Header -->
+      <div class="p-4 flex items-center justify-between border-b border-zinc-200/60 dark:border-zinc-800/60">
+        <div class="flex items-center gap-3">
+          <img src="/static/icon.svg" alt="Logo" class="w-9 h-9 rounded-xl shadow-md" />
+          <div>
+            <span class="font-extrabold text-lg tracking-tight bg-gradient-to-r from-orange-500 via-pink-500 to-purple-500 bg-clip-text text-transparent">TaskForge</span>
+            <div class="flex items-center gap-1.5">
+              <span id="sse-indicator" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span id="sse-label" class="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Tempo Real</span>
+            </div>
+          </div>
+        </div>
+        <button id="btn-close-sidebar" class="lg:hidden p-2 rounded-xl text-zinc-400 hover:text-zinc-100">✕</button>
+      </div>
+
+      <!-- Navigation Scroll Area -->
+      <div class="flex-1 overflow-y-auto p-3 space-y-6">
+        <!-- Quick Action Button -->
+        <button id="btn-new-task-sidebar"
+          class="w-full flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 via-pink-500 to-purple-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-pink-500/20 hover:-translate-y-0.5 transition-all duration-300">
+          <span>＋</span> Nova Tarefa
+        </button>
+
+        <!-- Saved Views Section -->
+        <div>
+          <div class="flex items-center justify-between px-2 mb-2">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Visualizações</span>
+            <button id="btn-create-view" class="text-xs font-semibold text-pink-500 hover:text-orange-400 transition-colors" title="Salvar nova visualização">
+              + Criar
+            </button>
+          </div>
+          <div id="sidebar-views-list" class="space-y-1"></div>
+        </div>
+
+        <!-- Multi-Project Selector -->
+        <div>
+          <div class="flex items-center justify-between px-2 mb-2">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Projetos (Multi-Filtro)</span>
+            <button id="btn-clear-projects" class="text-[11px] text-zinc-400 hover:text-pink-400 hidden">Limpar</button>
+          </div>
+          <div id="sidebar-projects-list" class="space-y-1"></div>
+        </div>
+
+        <!-- System & Admin Links -->
+        <div class="pt-2 border-t border-zinc-200/60 dark:border-zinc-800/60 space-y-1">
+          <span class="px-2 text-[11px] font-bold uppercase tracking-wider text-zinc-400 block mb-1">Administração & API</span>
+          <button data-admin-tab="fields" class="btn-open-admin w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60 transition-all">
+            <span>🧩</span> Campos & Status Personalizados
+          </button>
+          <button data-admin-tab="projects" class="btn-open-admin w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60 transition-all">
+            <span>📁</span> Projetos & Permissões
+          </button>
+          <button data-admin-tab="users" class="btn-open-admin w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60 transition-all">
+            <span>👥</span> Usuários & Papéis (RBAC)
+          </button>
+          <button data-admin-tab="webhooks" class="btn-open-admin w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60 transition-all">
+            <span>🪝</span> Webhooks & Entregas
+          </button>
+          <button data-admin-tab="tokens" class="btn-open-admin w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60 transition-all">
+            <span>🔑</span> Tokens de API & Swagger
+          </button>
+          <button data-admin-tab="backups" class="btn-open-admin w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60 transition-all">
+            <span>💾</span> Backups Online SQLite
+          </button>
+          <button data-admin-tab="notifications" class="btn-open-admin w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60 transition-all">
+            <span>🔔</span> PWA, Push & Resumos (08/13/18h)
+          </button>
+        </div>
+      </div>
+
+      <!-- User Footer -->
+      <div class="p-3 border-t border-zinc-200/60 dark:border-zinc-800/60 flex items-center justify-between">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div id="user-avatar" class="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
+            A
+          </div>
+          <div class="truncate">
+            <p id="user-display-name" class="text-xs font-bold truncate">Admin</p>
+            <p id="user-display-role" class="text-[10px] text-zinc-400 uppercase tracking-wider">admin</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-1">
+          <button id="btn-theme-toggle" class="p-2 rounded-xl text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60" title="Alternar tema Claro/Escuro">
+            🌓
+          </button>
+          <button id="btn-logout" class="p-2 rounded-xl text-rose-400 hover:bg-rose-500/10 text-xs font-semibold" title="Sair">
+            Sair
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT COLUMN -->
+    <div class="flex-1 flex flex-col min-w-0 pb-20 lg:pb-6">
+
+      <!-- TOP GLASSMORPHISM BAR -->
+      <header class="sticky top-0 z-30 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md border-b border-zinc-200/70 dark:border-zinc-800/80 px-4 py-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <button id="btn-open-sidebar" class="lg:hidden p-2 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
+              ☰
+            </button>
+            <div>
+              <div class="flex items-center gap-2">
+                <h2 id="active-view-title" class="text-lg font-extrabold tracking-tight">Todas as Tarefas</h2>
+                <span id="active-view-badge" class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-gradient-to-r from-orange-500/20 via-pink-500/20 to-purple-500/20 text-pink-500 border border-pink-500/30">
+                  Tabela
+                </span>
+              </div>
+              <p id="active-view-subtitle" class="text-[11px] text-zinc-500 dark:text-zinc-400 hidden sm:block">
+                Consultando todos os projetos • Fuso America/Sao_Paulo
+              </p>
+            </div>
+          </div>
+
+          <!-- Global Search & View Switcher & Notification Bell -->
+          <div class="flex items-center gap-2 flex-1 sm:flex-initial justify-end">
+            <div class="relative flex-1 sm:w-64 max-w-xs">
+              <input id="global-search-input" type="search"
+                placeholder="Pesquisar tarefas, #código, tags..."
+                class="w-full rounded-2xl bg-zinc-100 dark:bg-zinc-900/90 border border-zinc-200 dark:border-zinc-800 pl-9 pr-3 py-2 text-xs focus:outline-none focus:border-pink-500 transition-all duration-300" />
+              <span class="absolute left-3 top-2.5 text-xs text-zinc-400">🔍</span>
+            </div>
+
+            <!-- View Mode Switcher (Table / Kanban / List) -->
+            <div class="hidden sm:flex items-center bg-zinc-100 dark:bg-zinc-900 p-1 rounded-2xl border border-zinc-200 dark:border-zinc-800">
+              <button data-view-mode="table" class="btn-view-mode px-3 py-1.5 rounded-xl text-xs font-semibold transition-all">Tabela</button>
+              <button data-view-mode="kanban" class="btn-view-mode px-3 py-1.5 rounded-xl text-xs font-semibold transition-all">Kanban</button>
+              <button data-view-mode="list" class="btn-view-mode px-3 py-1.5 rounded-xl text-xs font-semibold transition-all">Lista</button>
+            </div>
+
+            <!-- Filter & View Config Trigger -->
+            <button id="btn-toggle-filter-panel"
+              class="px-3 py-2 rounded-2xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-semibold hover:border-pink-500/50 transition-all flex items-center gap-1.5">
+              <span>⚡</span> <span class="hidden md:inline">Filtros & Colunas</span>
+              <span id="active-filters-count" class="hidden px-1.5 py-0.2 rounded-full bg-pink-500 text-white text-[10px]">0</span>
+            </button>
+
+            <!-- Install PWA Button (shown when installable) -->
+            <button id="btn-install-pwa"
+              class="hidden px-3 py-2 rounded-2xl bg-gradient-to-r from-orange-500 to-pink-500 text-white text-xs font-bold shadow-md">
+              📲 Instalar App
+            </button>
+
+            <!-- Notifications Button -->
+            <button id="btn-open-notifications"
+              class="relative p-2 rounded-2xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-pink-500/50 transition-all">
+              <span>🔔</span>
+              <span id="notif-unread-badge" class="hidden absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">0</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Mobile View Switcher Bar -->
+        <div class="flex sm:hidden items-center justify-between gap-2 mt-2.5 pt-2 border-t border-zinc-200/50 dark:border-zinc-800/60">
+          <div class="flex items-center bg-zinc-100 dark:bg-zinc-900 p-1 rounded-xl border border-zinc-200 dark:border-zinc-800 flex-1">
+            <button data-view-mode="table" class="btn-view-mode flex-1 py-1 rounded-lg text-xs font-semibold text-center">Tabela</button>
+            <button data-view-mode="kanban" class="btn-view-mode flex-1 py-1 rounded-lg text-xs font-semibold text-center">Kanban</button>
+            <button data-view-mode="list" class="btn-view-mode flex-1 py-1 rounded-lg text-xs font-semibold text-center">Lista</button>
+          </div>
+        </div>
+      </header>
+
+      <!-- BENTO GRID METRICS & QUICK ADD BAR -->
+      <section class="px-4 pt-4 space-y-4">
+        <!-- Bento Metrics Row (Zero-Flicker Atomic Counters) -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div data-quick-preset="all" class="bento-card cursor-pointer rounded-2xl p-3.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 hover:-translate-y-0.5 transition-all duration-300">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Na Visualização</span>
+              <span class="text-xs px-2 py-0.5 rounded-lg bg-orange-500/10 text-orange-400 font-semibold">Total</span>
+            </div>
+            <p id="metric-total" class="text-2xl font-extrabold mt-1 transition-all duration-500">0</p>
+          </div>
+
+          <div data-quick-preset="overdue" class="bento-card cursor-pointer rounded-2xl p-3.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 hover:-translate-y-0.5 transition-all duration-300">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-rose-400">Atrasadas</span>
+              <span class="text-xs px-2 py-0.5 rounded-lg bg-rose-500/10 text-rose-400 font-semibold">Urgente</span>
+            </div>
+            <p id="metric-overdue" class="text-2xl font-extrabold text-rose-500 mt-1 transition-all duration-500">0</p>
+          </div>
+
+          <div data-quick-preset="today" class="bento-card cursor-pointer rounded-2xl p-3.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 hover:-translate-y-0.5 transition-all duration-300">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-pink-400">Vencem Hoje</span>
+              <span class="text-xs px-2 py-0.5 rounded-lg bg-pink-500/10 text-pink-400 font-semibold">Foco</span>
+            </div>
+            <p id="metric-today" class="text-2xl font-extrabold text-pink-500 mt-1 transition-all duration-500">0</p>
+          </div>
+
+          <div data-quick-preset="completed" class="bento-card cursor-pointer rounded-2xl p-3.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 hover:-translate-y-0.5 transition-all duration-300">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-400">Concluídas</span>
+              <span class="text-xs px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-400 font-semibold">Done</span>
+            </div>
+            <p id="metric-completed" class="text-2xl font-extrabold text-emerald-500 mt-1 transition-all duration-500">0</p>
+          </div>
+        </div>
+
+        <!-- Fast 1-Tap Quick Task Creation Bar -->
+        <form id="quick-add-form" class="rounded-2xl bg-zinc-50 dark:bg-zinc-900/70 border border-zinc-200/80 dark:border-zinc-800/80 p-2.5 flex flex-wrap items-center gap-2 shadow-sm">
+          <input id="quick-task-title" type="text" required
+            placeholder="⚡ Criar tarefa rápida (ex: Revisar contrato com cliente)... Pressione Enter"
+            class="flex-1 min-w-[200px] bg-transparent px-3 py-1.5 text-sm focus:outline-none" />
+          <select id="quick-task-priority" class="rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-2.5 py-1.5 text-xs font-semibold">
+            <option value="P1">🔥 P1 Urgente</option>
+            <option value="P2">⚡ P2 Alta</option>
+            <option value="P3" selected>📌 P3 Normal</option>
+            <option value="P4">💤 P4 Baixa</option>
+          </select>
+          <select id="quick-task-project" class="rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-2.5 py-1.5 text-xs">
+            <option value="">Sem Projeto</option>
+          </select>
+          <input id="quick-task-due" type="date" title="Data de vencimento (opcional)"
+            class="rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-2.5 py-1.5 text-xs" />
+          <button type="submit"
+            class="rounded-xl bg-gradient-to-r from-orange-500 via-pink-500 to-purple-600 px-4 py-1.5 text-xs font-bold text-white shadow hover:-translate-y-0.5 transition-all">
+            Adicionar
+          </button>
+        </form>
+
+        <!-- ADVANCED FILTER BUILDER & VIEW SETTINGS DRAWER (Collapsible) -->
+        <div id="filter-builder-panel" class="hidden rounded-3xl bg-zinc-50/95 dark:bg-zinc-900/90 backdrop-blur-md border border-zinc-200 dark:border-zinc-800 p-4 space-y-4 glow-border">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 dark:border-zinc-800 pb-3">
+            <div class="flex items-center gap-3">
+              <span class="text-xs font-extrabold uppercase tracking-wider bg-gradient-to-r from-orange-500 to-pink-500 bg-clip-text text-transparent">
+                Construtor de Filtros (E / OU / Grupos) & Colunas
+              </span>
+              <select id="filter-root-logic" class="rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-2.5 py-1 text-xs font-bold">
+                <option value="AND">Combinar com E (AND)</option>
+                <option value="OR">Combinar com OU (OR)</option>
+              </select>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" id="btn-add-filter-cond" class="px-3 py-1 rounded-xl bg-zinc-200 dark:bg-zinc-800 text-xs font-semibold hover:bg-pink-500 hover:text-white transition-all">
+                + Condição
+              </button>
+              <button type="button" id="btn-add-filter-group" class="px-3 py-1 rounded-xl bg-zinc-200 dark:bg-zinc-800 text-xs font-semibold hover:bg-purple-500 hover:text-white transition-all">
+                + Grupo (E/OU)
+              </button>
+              <button type="button" id="btn-reset-filters" class="px-3 py-1 rounded-xl text-xs text-rose-400 hover:bg-rose-500/10">
+                Limpar Tudo
+              </button>
+            </div>
+          </div>
+
+          <!-- Dynamic Conditions & Groups Container -->
+          <div id="filter-conditions-container" class="space-y-2"></div>
+
+          <!-- Sorting, Grouping, and Visible Columns -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3 border-t border-zinc-200 dark:border-zinc-800">
+            <div>
+              <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">Agrupar Por</label>
+              <select id="view-group-by" class="w-full rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs">
+                <option value="">Sem agrupamento</option>
+                <option value="status_slug">Status</option>
+                <option value="priority">Prioridade</option>
+                <option value="project_id">Projeto</option>
+                <option value="assignee_id">Responsável</option>
+                <option value="due_date">Data de Vencimento</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">Ordenação Principal & Secundária</label>
+              <div class="flex gap-1.5">
+                <select id="view-sort-field" class="flex-1 rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-2.5 py-2 text-xs">
+                  <option value="priority">Prioridade</option>
+                  <option value="due_date">Data de Vencimento</option>
+                  <option value="created_at">Data de Criação</option>
+                  <option value="title">Título</option>
+                  <option value="status_slug">Status</option>
+                  <option value="code">Código (#)</option>
+                </select>
+                <select id="view-sort-dir" class="rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-2.5 py-2 text-xs">
+                  <option value="asc">ASC ↑</option>
+                  <option value="desc">DESC ↓</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">Colunas Visíveis (Clique p/ alternar)</label>
+              <div id="view-columns-selector" class="flex flex-wrap gap-1.5"></div>
+            </div>
+          </div>
+
+          <!-- Save / Duplicate / Share View Controls -->
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-zinc-200 dark:border-zinc-800">
+            <div class="flex items-center gap-2">
+              <button type="button" id="btn-apply-filters"
+                class="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-pink-500 text-white text-xs font-bold shadow">
+                Aplicar Filtros Agora
+              </button>
+              <button type="button" id="btn-save-current-view"
+                class="px-3 py-2 rounded-xl bg-zinc-200 dark:bg-zinc-800 text-xs font-semibold hover:border-pink-500">
+                💾 Salvar na Visualização Atual
+              </button>
+              <button type="button" id="btn-save-as-new-view"
+                class="px-3 py-2 rounded-xl bg-zinc-200 dark:bg-zinc-800 text-xs font-semibold">
+                ✨ Salvar Como Nova...
+              </button>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" id="btn-duplicate-view" class="px-2.5 py-1.5 rounded-xl bg-zinc-200 dark:bg-zinc-800 text-xs">Duplicar</button>
+              <button type="button" id="btn-delete-view" class="px-2.5 py-1.5 rounded-xl bg-rose-500/10 text-rose-400 text-xs">Excluir Vista</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- MAIN TASKS VIEWPORT (Table / Kanban / List) -->
+      <!-- ================================================================= -->
+      <main class="flex-1 px-4 pt-4">
+        <div id="tasks-viewport" class="min-h-[380px]"></div>
+
+        <!-- Pagination Bar -->
+        <div id="pagination-bar" class="mt-4 flex items-center justify-between text-xs text-zinc-400 px-2">
+          <span id="pagination-info">Exibindo 0 tarefas</span>
+          <div class="flex items-center gap-2">
+            <button id="btn-prev-page" class="px-3 py-1.5 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 disabled:opacity-40">Anterior</button>
+            <span id="pagination-page-label">Página 1 de 1</span>
+            <button id="btn-next-page" class="px-3 py-1.5 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 disabled:opacity-40">Próxima</button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- MOBILE BOTTOM NAVIGATION BAR (Mobile-First Ergonomics) -->
+  <!-- =================================================================== -->
+  <nav class="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white/90 dark:bg-zinc-950/90 backdrop-blur-xl border-t border-zinc-200 dark:border-zinc-800 px-3 py-2 flex items-center justify-around">
+    <button id="mob-nav-views" class="flex flex-col items-center gap-0.5 text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+      <span class="text-base">🗂️</span>
+      <span>Vistas</span>
+    </button>
+    <button id="mob-nav-filters" class="flex flex-col items-center gap-0.5 text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+      <span class="text-base">⚡</span>
+      <span>Filtros</span>
+    </button>
+    <button id="mob-nav-new-task" class="w-12 h-12 -mt-5 rounded-2xl bg-gradient-to-r from-orange-500 via-pink-500 to-purple-600 flex items-center justify-center text-xl font-bold text-white shadow-lg shadow-pink-500/30">
+      ＋
+    </button>
+    <button id="mob-nav-notifs" class="flex flex-col items-center gap-0.5 text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+      <span class="text-base">🔔</span>
+      <span>Alertas</span>
+    </button>
+    <button id="mob-nav-admin" class="flex flex-col items-center gap-0.5 text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+      <span class="text-base">⚙️</span>
+      <span>Config</span>
+    </button>
+  </nav>
+
+  <!-- =================================================================== -->
+  <!-- TASK DETAIL & FULL EDITOR MODAL (Subtasks, Custom Fields, Files, History) -->
+  <!-- =================================================================== -->
+  <div id="task-modal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 hidden">
+    <div class="w-full max-w-4xl max-h-[92vh] rounded-t-3xl sm:rounded-3xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden glow-border">
+      <!-- Modal Header -->
+      <div class="px-5 py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <span id="modal-task-code" class="text-xs font-mono font-bold px-2.5 py-1 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-orange-400">#NEW</span>
+          <h3 id="modal-header-title" class="text-base font-extrabold">Detalhes da Tarefa</h3>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" id="btn-delete-task-modal" class="hidden px-3 py-1.5 rounded-xl bg-rose-500/10 text-rose-400 text-xs font-semibold hover:bg-rose-500/20">
+            Excluir
+          </button>
+          <button type="button" id="btn-close-task-modal" class="p-2 rounded-xl text-zinc-400 hover:text-zinc-100">✕</button>
+        </div>
+      </div>
+
+      <!-- Modal Scroll Body -->
+      <div class="flex-1 overflow-y-auto p-5 space-y-6">
+        <form id="task-detail-form" class="space-y-5">
+          <input type="hidden" id="form-task-id" />
+
+          <!-- Title & Color -->
+          <div class="flex flex-col sm:flex-row gap-3">
+            <div class="flex-1">
+              <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">Título da Tarefa *</label>
+              <input id="form-task-title" type="text" required
+                class="w-full rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-4 py-2.5 text-sm font-semibold focus:outline-none focus:border-pink-500" />
+            </div>
+            <div class="w-full sm:w-36">
+              <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">Cor do Card</label>
+              <input id="form-task-color" type="color" value="#f97316"
+                class="w-full h-10 rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 p-1 cursor-pointer" />
+            </div>
+          </div>
+
+          <!-- Core Attributes Grid -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">Status</label>
+              <select id="form-task-status" class="w-full rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs font-semibold"></select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">Prioridade</label>
+              <select id="form-task-priority" class="w-full rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs font-semibold">
+                <option value="P1">🔥 P1 - Urgente</option>
+                <option value="P2">⚡ P2 - Alta</option>
+                <option value="P3">📌 P3 - Normal</option>
+                <option value="P4">💤 P4 - Baixa</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">Projeto / Categoria</label>
+              <select id="form-task-project" class="w-full rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs"></select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">Responsável</label>
+              <select id="form-task-assignee" class="w-full rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs"></select>
+            </div>
+          </div>
+
+          <!-- Dates, Optional Time & Recurrence -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="text-[11px] font-bold uppercase text-zinc-400">Data de Vencimento (Opcional)</label>
+                <button type="button" id="btn-clear-due-date" class="text-[10px] text-pink-400 hover:underline">Sem data</button>
+              </div>
+              <input id="form-task-due-date" type="date"
+                class="w-full rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs" />
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">Horário (Opcional)</label>
+              <input id="form-task-due-time" type="time"
+                class="w-full rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs" />
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">Recorrência</label>
+              <select id="form-task-recurrence" class="w-full rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs">
+                <option value="">Não se repete</option>
+                <option value="daily">Diariamente</option>
+                <option value="weekly">Semanalmente</option>
+                <option value="monthly">Mensalmente</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Tags & Participants -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">Etiquetas (separadas por vírgula)</label>
+              <input id="form-task-tags" type="text" placeholder="urgente, financeiro, cliente"
+                class="w-full rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs" />
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">Participantes (Múltipla Seleção)</label>
+              <select id="form-task-participants" multiple class="w-full h-16 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-3 py-1 text-xs"></select>
+            </div>
+          </div>
+
+          <!-- Description & Notes -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">Descrição</label>
+              <textarea id="form-task-description" rows="3"
+                class="w-full rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 p-3 text-xs"></textarea>
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">Observações Internas</label>
+              <textarea id="form-task-notes" rows="3"
+                class="w-full rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 p-3 text-xs"></textarea>
+            </div>
+          </div>
+
+          <!-- Dynamic Custom Fields Section -->
+          <div id="modal-custom-fields-wrapper" class="pt-3 border-t border-zinc-200 dark:border-zinc-800">
+            <h4 class="text-xs font-extrabold uppercase tracking-wider text-pink-500 mb-3">Campos Personalizados</h4>
+            <div id="modal-custom-fields-container" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+          </div>
+
+          <div class="flex justify-end gap-2 pt-2">
+            <button type="submit"
+              class="rounded-2xl bg-gradient-to-r from-orange-500 via-pink-500 to-purple-600 px-6 py-2.5 text-xs font-bold text-white shadow-lg">
+              Salvar Alterações da Tarefa
+            </button>
+          </div>
+        </form>
+
+        <!-- Subtasks, Reminders, Attachments, Comments & History (Visible when editing existing task) -->
+        <div id="modal-existing-extras" class="space-y-6 pt-6 border-t border-zinc-200 dark:border-zinc-800">
+          <!-- Subtasks / Checklist -->
+          <div>
+            <h4 class="text-xs font-extrabold uppercase tracking-wider text-orange-400 mb-2">☑️ Subtarefas & Checklist</h4>
+            <div id="modal-subtasks-list" class="space-y-1.5 mb-2"></div>
+            <div class="flex gap-2">
+              <input id="new-subtask-input" type="text" placeholder="Adicionar item ao checklist..."
+                class="flex-1 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-3 py-1.5 text-xs" />
+              <button type="button" id="btn-add-subtask" class="px-3 py-1.5 rounded-xl bg-zinc-200 dark:bg-zinc-800 text-xs font-bold">+ Item</button>
+            </div>
+          </div>
+
+          <!-- Task Reminders -->
+          <div>
+            <h4 class="text-xs font-extrabold uppercase tracking-wider text-purple-400 mb-2">⏰ Lembretes desta Tarefa</h4>
+            <div id="modal-reminders-list" class="space-y-1.5 mb-2"></div>
+            <div class="flex flex-wrap gap-2">
+              <input id="new-reminder-dt" type="datetime-local"
+                class="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-3 py-1.5 text-xs" />
+              <input id="new-reminder-msg" type="text" placeholder="Mensagem opcional do lembrete..."
+                class="flex-1 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-3 py-1.5 text-xs" />
+              <button type="button" id="btn-add-reminder" class="px-3 py-1.5 rounded-xl bg-purple-500/20 text-purple-300 text-xs font-bold">+ Lembrete</button>
+            </div>
+          </div>
+
+          <!-- Attachments -->
+          <div>
+            <h4 class="text-xs font-extrabold uppercase tracking-wider text-pink-400 mb-2">📎 Anexos</h4>
+            <div id="modal-attachments-list" class="space-y-1.5 mb-2"></div>
+            <div class="flex items-center gap-2">
+              <input id="new-attachment-file" type="file" class="text-xs text-zinc-400" />
+              <button type="button" id="btn-upload-attachment" class="px-3 py-1.5 rounded-xl bg-zinc-200 dark:bg-zinc-800 text-xs font-bold">Enviar Anexo</button>
+            </div>
+          </div>
+
+          <!-- Comments -->
+          <div>
+            <h4 class="text-xs font-extrabold uppercase tracking-wider text-emerald-400 mb-2">💬 Comentários</h4>
+            <div id="modal-comments-list" class="space-y-2 mb-2 max-h-48 overflow-y-auto"></div>
+            <div class="flex gap-2">
+              <input id="new-comment-input" type="text" placeholder="Escreva um comentário..."
+                class="flex-1 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-3 py-1.5 text-xs" />
+              <button type="button" id="btn-add-comment" class="px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 text-xs font-bold">Comentar</button>
+            </div>
+          </div>
+
+          <!-- Audit History -->
+          <div>
+            <h4 class="text-xs font-extrabold uppercase tracking-wider text-zinc-400 mb-2">🕓 Histórico de Alterações</h4>
+            <div id="modal-history-list" class="space-y-1.5 max-h-44 overflow-y-auto text-[11px] text-zinc-400"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- ADMIN & CONFIGURATION MODAL (Fields, Status, Users, Webhooks, Backups, Push) -->
+  <!-- =================================================================== -->
+  <div id="admin-modal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 hidden">
+    <div class="w-full max-w-5xl max-h-[92vh] rounded-t-3xl sm:rounded-3xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden glow-border">
+      <div class="px-5 py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+        <h3 class="text-base font-extrabold bg-gradient-to-r from-orange-500 via-pink-500 to-purple-500 bg-clip-text text-transparent">
+          Painel Administrativo & Configurações
+        </h3>
+        <button id="btn-close-admin-modal" class="p-2 rounded-xl text-zinc-400 hover:text-zinc-100">✕</button>
+      </div>
+
+      <!-- Admin Tabs -->
+      <div class="flex overflow-x-auto border-b border-zinc-200 dark:border-zinc-800 px-4 gap-2 bg-zinc-50 dark:bg-zinc-950/50">
+        <button data-tab="fields" class="admin-tab-btn py-3 px-3 text-xs font-bold border-b-2 border-transparent whitespace-nowrap">🧩 Campos & Status</button>
+        <button data-tab="projects" class="admin-tab-btn py-3 px-3 text-xs font-bold border-b-2 border-transparent whitespace-nowrap">📁 Projetos</button>
+        <button data-tab="users" class="admin-tab-btn py-3 px-3 text-xs font-bold border-b-2 border-transparent whitespace-nowrap">👥 Usuários & Permissões</button>
+        <button data-tab="webhooks" class="admin-tab-btn py-3 px-3 text-xs font-bold border-b-2 border-transparent whitespace-nowrap">🪝 Webhooks</button>
+        <button data-tab="tokens" class="admin-tab-btn py-3 px-3 text-xs font-bold border-b-2 border-transparent whitespace-nowrap">🔑 API & Executions</button>
+        <button data-tab="backups" class="admin-tab-btn py-3 px-3 text-xs font-bold border-b-2 border-transparent whitespace-nowrap">💾 Backups SQLite</button>
+        <button data-tab="notifications" class="admin-tab-btn py-3 px-3 text-xs font-bold border-b-2 border-transparent whitespace-nowrap">🔔 PWA & Notificações</button>
+      </div>
+
+      <div id="admin-tab-content" class="flex-1 overflow-y-auto p-5"></div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed bottom-16 lg:bottom-5 right-5 z-50 space-y-2 pointer-events-none"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

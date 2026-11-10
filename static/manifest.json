@@ -1,0 +1,19 @@
+{
+  "name": "TaskForge — Gestão de Tarefas Personalizável",
+  "short_name": "TaskForge",
+  "description": "Aplicativo moderno, rápido e personalizável de gerenciamento de tarefas com campos customizados, Kanban, Tabela e Web Push.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "icons": [
+    {
+      "src": "/static/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
