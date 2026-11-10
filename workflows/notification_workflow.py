@@ -198,7 +198,12 @@ def build_user_digest_summary(user_id: str) -> dict[str, Any]:
     }
     for r in tasks_rows:
         t = dict(r)
-        cat = classify_task_temporal_status(t, today_str=today_str)
+        if bool(t.get("is_today")):
+            cat = "today"
+        else:
+            cat = classify_task_temporal_status(t, today_str=today_str)
+            if cat == "today":
+                cat = "upcoming"
         if cat in grouped:
             grouped[cat].append(
                 {
@@ -206,6 +211,7 @@ def build_user_digest_summary(user_id: str) -> dict[str, Any]:
                     "code": t["code"],
                     "title": t["title"],
                     "priority": t["priority"],
+                    "is_today": bool(t.get("is_today")),
                     "due_date": t["due_date"],
                     "due_time": t["due_time"],
                 }

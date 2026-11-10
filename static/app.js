@@ -22,8 +22,8 @@ const state = {
   filterTree: { logic: 'AND', conditions: [], groups: [] },
   sorts: [{ field: 'priority', dir: 'asc' }, { field: 'due_date', dir: 'asc' }],
   groupBy: '',
-  visibleColumns: ['code', 'title', 'status_slug', 'priority', 'project_id', 'assignee_id', 'due_date', 'tags'],
-  columnOrder: ['code', 'title', 'status_slug', 'priority', 'project_id', 'assignee_id', 'due_date', 'tags'],
+  visibleColumns: ['code', 'title', 'is_today', 'status_slug', 'priority', 'project_id', 'assignee_id', 'due_date', 'tags'],
+  columnOrder: ['code', 'title', 'is_today', 'status_slug', 'priority', 'project_id', 'assignee_id', 'due_date', 'tags'],
   activeTaskModalId: null,
   sseSource: null,
   sseThrottleTimer: null,
@@ -34,6 +34,7 @@ const state = {
 const NATIVE_COLUMNS = [
   { key: 'code', label: 'Código' },
   { key: 'title', label: 'Título' },
+  { key: 'is_today', label: '🚩 Hoje' },
   { key: 'status_slug', label: 'Status' },
   { key: 'priority', label: 'Prioridade' },
   { key: 'project_id', label: 'Projeto' },
@@ -265,10 +266,20 @@ function applySavedView(view, shouldFetch = true) {
   const allKeys = getAllAvailableColumns().map((c) => c.key);
   state.visibleColumns = (view.visible_columns && view.visible_columns.length)
     ? view.visible_columns.slice()
-    : allKeys.slice(0, 8);
+    : allKeys.slice(0, 9);
+  if (view.is_system && !state.visibleColumns.includes('is_today')) {
+    const titleIdx = state.visibleColumns.indexOf('title');
+    if (titleIdx >= 0) state.visibleColumns.splice(titleIdx + 1, 0, 'is_today');
+    else state.visibleColumns.unshift('is_today');
+  }
   state.columnOrder = (view.column_order && view.column_order.length)
     ? view.column_order.slice()
     : state.visibleColumns.slice();
+  if (!state.columnOrder.includes('is_today')) {
+    const titleIdx = state.columnOrder.indexOf('title');
+    if (titleIdx >= 0) state.columnOrder.splice(titleIdx + 1, 0, 'is_today');
+    else state.columnOrder.unshift('is_today');
+  }
 
   // Ensure any custom field keys are also present in columnOrder
   for (const k of allKeys) {
@@ -405,6 +416,7 @@ function populateGroupByDropdown() {
   if (!sel) return;
   const base = [
     { value: '', label: 'Sem agrupamento' },
+    { value: 'is_today', label: '🚩 Flag Hoje' },
     { value: 'status_slug', label: 'Status' },
     { value: 'priority', label: 'Prioridade' },
     { value: 'project_id', label: 'Projeto' },
@@ -457,6 +469,7 @@ window.toggleVisibleColumn = function(colKey) {
 // =====================================================================
 function getFilterableFields() {
   const base = [
+    { key: 'is_today', label: '🚩 Flag Hoje' },
     { key: 'title', label: 'Título' },
     { key: 'status_slug', label: 'Status' },
     { key: 'priority', label: 'Prioridade' },
@@ -672,9 +685,12 @@ function updateAtomicBentoMetrics() {
   let today = 0;
   let completed = 0;
   for (const t of state.tasks) {
-    if (t.status_slug === 'completed') completed++;
-    else if (t.temporal_status === 'overdue') overdue++;
-    else if (t.temporal_status === 'today') today++;
+    if (t.status_slug === 'completed') {
+      completed++;
+    } else {
+      if (t.temporal_status === 'overdue') overdue++;
+      if (t.is_today) today++;
+    }
   }
   setAtomicText('metric-total', total);
   setAtomicText('metric-overdue', overdue);
@@ -758,6 +774,23 @@ function getDueBadge(task) {
   const cls = styles[task.temporal_status] || styles.upcoming;
   const timeStr = task.due_time ? ` ${task.due_time}` : '';
   return `<span class="px-2 py-0.5 rounded-lg text-[11px] font-semibold border ${cls}">${escapeHtml(task.due_date)}${escapeHtml(timeStr)}</span>`;
+}
+
+function renderTodayFlagButton(task) {
+  const active = Boolean(task.is_today);
+  return `
+    <button type="button"
+      onclick="event.stopPropagation(); quickToggleTaskToday('${task.id}', ${!active})"
+      title="${active ? 'Marcada para Hoje (clique para remover de Hoje)' : 'Marcar flag Hoje (permanece em Hoje até você concluir ou desmarcar)'}"
+      class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all duration-300 ${
+        active
+          ? 'bg-gradient-to-r from-orange-500 via-pink-500 to-purple-600 text-white border-pink-500/50 shadow-sm shadow-pink-500/20'
+          : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:border-orange-500/50 hover:text-orange-400'
+      }">
+      <span>🚩</span>
+      <span>Hoje</span>
+    </button>
+  `;
 }
 
 // --- 1. TABLE VIEW (Inline Editable on Desktop + Adaptive Responsive Cards on Mobile) ---
@@ -861,6 +894,9 @@ function renderTableCell(task, colKey) {
         onchange="inlinePatchTask('${task.id}', { title: this.value })"
         class="w-full min-w-[180px] bg-transparent font-semibold text-zinc-900 dark:text-zinc-100 focus:bg-white dark:focus:bg-zinc-950 focus:px-2 focus:py-1 rounded-lg focus:outline-none focus:ring-1 focus:ring-pink-500 ${task.status_slug === 'completed' ? 'line-through text-zinc-400' : ''}" />
     `;
+  }
+  if (colKey === 'is_today') {
+    return renderTodayFlagButton(task);
   }
   if (colKey === 'status_slug') {
     return `
@@ -973,7 +1009,10 @@ function renderMobileTaskCard(t, orderedVisibleCols, allColsMap) {
             <p class="text-sm font-bold mt-1 ${isDone ? 'line-through text-zinc-400' : ''}">${escapeHtml(t.title)}</p>
           </div>
         </div>
-        <button onclick="openTaskModal('${t.id}')" class="text-xs text-zinc-400 px-1.5 py-0.5">✎</button>
+        <div class="flex items-center gap-1 shrink-0">
+          ${renderTodayFlagButton(t)}
+          <button onclick="openTaskModal('${t.id}')" class="text-xs text-zinc-400 px-1.5 py-0.5">✎</button>
+        </div>
       </div>
       <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-200/50 dark:border-zinc-800/60 text-xs">
         <select onchange="inlinePatchTask('${t.id}', { status_slug: this.value })"
@@ -1007,10 +1046,13 @@ function renderKanbanView() {
               <span class="font-mono text-[11px] font-bold text-orange-400">#${t.code}</span>
               ${getPriorityBadge(t.priority)}
             </div>
-            <input type="checkbox" ${isDone ? 'checked' : ''}
-              onclick="event.stopPropagation()"
-              onchange="quickToggleTaskComplete('${t.id}', this.checked)"
-              class="w-4 h-4 rounded accent-pink-500 cursor-pointer" />
+            <div class="flex items-center gap-1.5">
+              ${renderTodayFlagButton(t)}
+              <input type="checkbox" ${isDone ? 'checked' : ''}
+                onclick="event.stopPropagation()"
+                onchange="quickToggleTaskComplete('${t.id}', this.checked)"
+                class="w-4 h-4 rounded accent-pink-500 cursor-pointer" />
+            </div>
           </div>
           <h4 class="text-xs font-bold leading-snug ${isDone ? 'line-through text-zinc-400' : ''}">${escapeHtml(t.title)}</h4>
           ${t.project_name ? `<div class="text-[10px] font-semibold text-zinc-400 flex items-center gap-1.5"><span class="w-2 h-2 rounded-full" style="background:${escapeHtml(t.project_color)}"></span>${escapeHtml(t.project_name)}</div>` : ''}
@@ -1086,6 +1128,7 @@ function renderListView() {
               </span>
             </div>
             <div class="flex items-center gap-2.5 text-xs">
+              ${renderTodayFlagButton(t)}
               ${t.project_name ? `<span class="px-2.5 py-0.5 rounded-full bg-zinc-200/70 dark:bg-zinc-800 text-[11px]">${escapeHtml(t.project_name)}</span>` : ''}
               ${t.assignee_name ? `<span class="text-[11px] text-zinc-400">👤 ${escapeHtml(t.assignee_name)}</span>` : ''}
               ${getDueBadge(t)}
@@ -1127,6 +1170,11 @@ window.moveColumnOrder = function(colKey, delta) {
 window.quickToggleTaskComplete = async function(taskId, checked) {
   const newStatus = checked ? 'completed' : 'pending';
   await inlinePatchTask(taskId, { status_slug: newStatus });
+};
+
+window.quickToggleTaskToday = async function(taskId, isToday) {
+  await inlinePatchTask(taskId, { is_today: Boolean(isToday) });
+  showToast(isToday ? '🚩 Tarefa marcada para Hoje!' : 'Tarefa removida de Hoje.', 'info');
 };
 
 window.inlinePatchTask = async function(taskId, patchObj) {
@@ -1177,6 +1225,8 @@ window.openTaskModal = async function(taskId = null, showModal = true) {
     document.getElementById('form-task-assignee').value = state.user ? state.user.id : '';
     document.getElementById('form-task-due-date').value = '';
     document.getElementById('form-task-due-time').value = '';
+    const isTodayEl = document.getElementById('form-task-is-today');
+    if (isTodayEl) isTodayEl.checked = Boolean(state.activeView && state.activeView.name === 'Hoje');
     document.getElementById('form-task-recurrence').value = '';
     document.getElementById('form-task-tags').value = '';
     document.getElementById('form-task-description').value = '';
@@ -1202,6 +1252,8 @@ window.openTaskModal = async function(taskId = null, showModal = true) {
     document.getElementById('form-task-assignee').value = t.assignee_id || '';
     document.getElementById('form-task-due-date').value = t.due_date || '';
     document.getElementById('form-task-due-time').value = t.due_time || '';
+    const isTodayEl = document.getElementById('form-task-is-today');
+    if (isTodayEl) isTodayEl.checked = Boolean(t.is_today);
     document.getElementById('form-task-recurrence').value = (t.recurrence && t.recurrence.frequency) || '';
     document.getElementById('form-task-tags').value = (t.tags || []).join(', ');
     document.getElementById('form-task-description').value = t.description || '';
@@ -2020,7 +2072,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.filterTree = {
           logic: 'AND',
           conditions: [
-            { field: 'due_date', op: 'is_today', value: null },
+            { field: 'is_today', op: 'is_true', value: true },
             { field: 'status_slug', op: 'not_in', value: ['completed', 'cancelled'] }
           ],
           groups: []
@@ -2043,6 +2095,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const titleInput = document.getElementById('quick-task-title');
     const title = titleInput.value.trim();
     if (!title) return;
+    const quickTodayEl = document.getElementById('quick-task-is-today');
+    const isTodayChecked = quickTodayEl ? quickTodayEl.checked : false;
+    const isCurrentlyOnTodayView = Boolean(state.activeView && state.activeView.name === 'Hoje');
     try {
       await api('/api/v1/tasks', {
         method: 'POST',
@@ -2050,10 +2105,12 @@ document.addEventListener('DOMContentLoaded', () => {
           title,
           priority: document.getElementById('quick-task-priority').value,
           project_id: document.getElementById('quick-task-project').value || null,
-          due_date: document.getElementById('quick-task-due').value || null
+          due_date: document.getElementById('quick-task-due').value || null,
+          is_today: isTodayChecked || isCurrentlyOnTodayView
         })
       });
       titleInput.value = '';
+      if (quickTodayEl) quickTodayEl.checked = false;
       showToast('Tarefa adicionada!', 'success');
       await fetchTasks();
     } catch (err) {
@@ -2206,6 +2263,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
+    const isTodayEl = document.getElementById('form-task-is-today');
     const payload = {
       title: document.getElementById('form-task-title').value,
       color: document.getElementById('form-task-color').value,
@@ -2215,6 +2273,7 @@ document.addEventListener('DOMContentLoaded', () => {
       assignee_id: document.getElementById('form-task-assignee').value || null,
       due_date: document.getElementById('form-task-due-date').value || null,
       due_time: document.getElementById('form-task-due-time').value || null,
+      is_today: isTodayEl ? isTodayEl.checked : false,
       recurrence: recFreq ? { enabled: true, frequency: recFreq, interval: 1 } : null,
       tags,
       participants,

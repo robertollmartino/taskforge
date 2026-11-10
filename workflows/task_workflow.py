@@ -200,6 +200,7 @@ def hydrate_tasks(conn: Any, task_rows: list[Any]) -> list[dict[str, Any]]:
             "color": t.get("color") or "",
             "due_date": t.get("due_date"),
             "due_time": t.get("due_time"),
+            "is_today": bool(t.get("is_today", 0)),
             "temporal_status": classify_task_temporal_status(t, today_str=today_str),
             "recurrence": recurrence,
             "custom_values": custom_values,
@@ -328,15 +329,16 @@ def create_task_workflow(
         completed_at = now if status_slug == "completed" else None
         due_date = (data.get("due_date") or "").strip() or None
         due_time = (data.get("due_time") or "").strip() or None
+        is_today_int = 1 if data.get("is_today") else 0
 
         conn.execute(
             """
             INSERT INTO tasks (
                 id, code, title, description, notes, status_slug, priority,
                 project_id, assignee_id, participants_json, tags_json, color,
-                due_date, due_time, recurrence_json, custom_values_json,
+                due_date, due_time, is_today, recurrence_json, custom_values_json,
                 position, created_by, completed_at, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 task_id,
@@ -353,6 +355,7 @@ def create_task_workflow(
                 str(data.get("color") or ""),
                 due_date,
                 due_time,
+                is_today_int,
                 json.dumps(data["recurrence"], ensure_ascii=False) if data.get("recurrence") else None,
                 json.dumps(custom_vals, ensure_ascii=False),
                 position,
@@ -382,7 +385,7 @@ def create_task_workflow(
             task_id,
             user,
             "created",
-            {"title": title, "status_slug": status_slug, "priority": priority, "due_date": due_date},
+            {"title": title, "status_slug": status_slug, "priority": priority, "due_date": due_date, "is_today": bool(is_today_int)},
         )
 
     created_task = get_task_detail_workflow(task_id)
@@ -444,6 +447,7 @@ def update_task_workflow(
         new_color = str(patch["color"]) if "color" in patch and patch["color"] is not None else old["color"]
         new_due_date = (patch["due_date"] or "").strip() or None if "due_date" in patch else old["due_date"]
         new_due_time = (patch["due_time"] or "").strip() or None if "due_time" in patch else old["due_time"]
+        new_is_today = (1 if patch["is_today"] else 0) if "is_today" in patch and patch["is_today"] is not None else int(old.get("is_today") or 0)
         new_pos = float(patch["position"]) if "position" in patch and patch["position"] is not None else float(old["position"])
 
         if "participants" in patch and patch["participants"] is not None:
@@ -474,6 +478,7 @@ def update_task_workflow(
             ("assignee_id", old["assignee_id"], new_assignee),
             ("due_date", old["due_date"], new_due_date),
             ("due_time", old["due_time"], new_due_time),
+            ("is_today", bool(old.get("is_today")), bool(new_is_today)),
             ("color", old["color"], new_color),
         ]
         for field_key, ov, nv in tracked_pairs:
@@ -505,7 +510,7 @@ def update_task_workflow(
             UPDATE tasks SET
                 title = ?, description = ?, notes = ?, status_slug = ?, priority = ?,
                 project_id = ?, assignee_id = ?, participants_json = ?, tags_json = ?,
-                color = ?, due_date = ?, due_time = ?, recurrence_json = ?,
+                color = ?, due_date = ?, due_time = ?, is_today = ?, recurrence_json = ?,
                 custom_values_json = ?, position = ?, completed_at = ?, updated_at = ?
             WHERE id = ?
             """,
@@ -522,6 +527,7 @@ def update_task_workflow(
                 new_color,
                 new_due_date,
                 new_due_time,
+                new_is_today,
                 new_recurrence_json,
                 json.dumps(new_custom, ensure_ascii=False),
                 new_pos,
@@ -548,9 +554,9 @@ def update_task_workflow(
                         INSERT INTO tasks (
                             id, code, title, description, notes, status_slug, priority,
                             project_id, assignee_id, participants_json, tags_json, color,
-                            due_date, due_time, recurrence_json, custom_values_json,
+                            due_date, due_time, is_today, recurrence_json, custom_values_json,
                             position, created_by, completed_at, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
                         """,
                         (
                             new_rec_id,
@@ -566,6 +572,7 @@ def update_task_workflow(
                             new_color,
                             next_due,
                             new_due_time,
+                            new_is_today,
                             new_recurrence_json,
                             json.dumps(new_custom, ensure_ascii=False),
                             new_pos + 1.0,

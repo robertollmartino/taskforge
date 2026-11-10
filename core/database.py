@@ -132,6 +132,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     color TEXT DEFAULT '',
     due_date TEXT,
     due_time TEXT,
+    is_today INTEGER NOT NULL DEFAULT 0,
     recurrence_json TEXT,
     custom_values_json TEXT NOT NULL DEFAULT '{}',
     position REAL NOT NULL DEFAULT 0,
@@ -146,6 +147,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
 CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
+CREATE INDEX IF NOT EXISTS idx_tasks_is_today ON tasks(is_today);
 
 CREATE TABLE IF NOT EXISTS subtasks (
     id TEXT PRIMARY KEY,
@@ -191,8 +193,8 @@ CREATE TABLE IF NOT EXISTS saved_views (
     name TEXT NOT NULL,
     owner_id TEXT REFERENCES users(id) ON DELETE CASCADE,
     view_type TEXT NOT NULL DEFAULT 'table',
-    visible_columns_json TEXT NOT NULL DEFAULT '["code","title","status_slug","priority","project_id","assignee_id","due_date","tags"]',
-    column_order_json TEXT NOT NULL DEFAULT '["code","title","status_slug","priority","project_id","assignee_id","due_date","tags"]',
+    visible_columns_json TEXT NOT NULL DEFAULT '["code","is_today","title","status_slug","priority","project_id","assignee_id","due_date","tags"]',
+    column_order_json TEXT NOT NULL DEFAULT '["code","is_today","title","status_slug","priority","project_id","assignee_id","due_date","tags"]',
     filters_json TEXT NOT NULL DEFAULT '{"logic":"AND","conditions":[],"groups":[]}',
     sorts_json TEXT NOT NULL DEFAULT '[{"field":"position","dir":"asc"},{"field":"created_at","dir":"desc"}]',
     group_by TEXT DEFAULT '',
@@ -290,6 +292,14 @@ def init_db() -> None:
     with db_session() as conn:
         conn.executescript(SCHEMA_SQL)
 
+        # Safe migration for existing databases: add is_today column if missing
+        task_cols = [
+            r["name"] for r in conn.execute("PRAGMA table_info(tasks)").fetchall()
+        ]
+        if "is_today" not in task_cols:
+            conn.execute("ALTER TABLE tasks ADD COLUMN is_today INTEGER NOT NULL DEFAULT 0;")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_is_today ON tasks(is_today);")
+
         # Seed default statuses
         default_statuses = [
             ("pending", "Pendente", "#f97316", "todo", 10, 1),
@@ -376,7 +386,7 @@ def init_db() -> None:
         view_count = conn.execute("SELECT COUNT(*) AS c FROM saved_views").fetchone()["c"]
         if view_count == 0:
             default_cols = json.dumps([
-                "code", "title", "status_slug", "priority", "project_id",
+                "code", "is_today", "title", "status_slug", "priority", "project_id",
                 "assignee_id", "due_date", "tags"
             ])
             presets = [
@@ -402,7 +412,7 @@ def init_db() -> None:
                     {
                         "logic": "AND",
                         "conditions": [
-                            {"field": "due_date", "op": "is_today", "value": None},
+                            {"field": "is_today", "op": "is_true", "value": True},
                             {"field": "status_slug", "op": "not_in", "value": ["completed", "cancelled"]},
                         ],
                         "groups": [],
@@ -522,6 +532,23 @@ def init_db() -> None:
                         now,
                     ),
                 )
+
+        # Ensure existing 'Hoje' system preset uses the persistent is_today flag instead of due_date
+        hoje_filter = json.dumps(
+            {
+                "logic": "AND",
+                "conditions": [
+                    {"field": "is_today", "op": "is_true", "value": True},
+                    {"field": "status_slug", "op": "not_in", "value": ["completed", "cancelled"]},
+                ],
+                "groups": [],
+            },
+            ensure_ascii=False,
+        )
+        conn.execute(
+            "UPDATE saved_views SET filters_json = ? WHERE name = 'Hoje' AND is_system_preset = 1",
+            (hoje_filter,),
+        )
 
         # Seed default backup configuration in system_settings
         bkp_cfg = conn.execute(

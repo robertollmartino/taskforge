@@ -178,6 +178,7 @@ class TaskCreateRequest(BaseModel):
     color: str = ""
     due_date: str | None = Field(default=None, description="YYYY-MM-DD ou null para sem data")
     due_time: str | None = Field(default=None, description="HH:MM opcional")
+    is_today: bool = Field(default=False, description="Flag manual persistente 'Hoje'")
     recurrence: dict[str, Any] | None = None
     custom_values: dict[str, Any] = Field(default_factory=dict)
     subtasks: list[Any] = Field(default_factory=list)
@@ -197,6 +198,7 @@ class TaskUpdateRequest(BaseModel):
     color: str | None = None
     due_date: str | None = None
     due_time: str | None = None
+    is_today: bool | None = None
     recurrence: dict[str, Any] | None = None
     custom_values: dict[str, Any] | None = None
     position: float | None = None
@@ -237,6 +239,7 @@ class SavedViewRequest(BaseModel):
     visible_columns: list[str] = Field(
         default_factory=lambda: [
             "code",
+            "is_today",
             "title",
             "status_slug",
             "priority",
@@ -249,6 +252,7 @@ class SavedViewRequest(BaseModel):
     column_order: list[str] = Field(
         default_factory=lambda: [
             "code",
+            "is_today",
             "title",
             "status_slug",
             "priority",
@@ -1086,7 +1090,7 @@ async def list_tasks_endpoint(
     if tag:
         conditions.append({"field": "tags", "op": "contains", "value": tag})
     if due_preset == "today":
-        conditions.append({"field": "due_date", "op": "is_today", "value": None})
+        conditions.append({"field": "is_today", "op": "is_true", "value": True})
     elif due_preset == "overdue":
         conditions.append({"field": "due_date", "op": "is_overdue", "value": None})
     elif due_preset == "next_7_days":

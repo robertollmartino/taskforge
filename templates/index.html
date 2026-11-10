@@ -283,8 +283,8 @@
 
           <div data-quick-preset="today" class="bento-card cursor-pointer rounded-2xl p-3.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 hover:-translate-y-0.5 transition-all duration-300">
             <div class="flex items-center justify-between">
-              <span class="text-[11px] font-bold uppercase tracking-wider text-pink-400">Vencem Hoje</span>
-              <span class="text-xs px-2 py-0.5 rounded-lg bg-pink-500/10 text-pink-400 font-semibold">Foco</span>
+              <span class="text-[11px] font-bold uppercase tracking-wider text-pink-400">Marcadas p/ Hoje</span>
+              <span class="text-xs px-2 py-0.5 rounded-lg bg-pink-500/10 text-pink-400 font-semibold">🚩 Hoje</span>
             </div>
             <p id="metric-today" class="text-2xl font-extrabold text-pink-500 mt-1 transition-all duration-500">0</p>
           </div>
@@ -303,6 +303,10 @@
           <input id="quick-task-title" type="text" required
             placeholder="⚡ Criar tarefa rápida (ex: Revisar contrato com cliente)... Pressione Enter"
             class="flex-1 min-w-[200px] bg-transparent px-3 py-1.5 text-sm focus:outline-none" />
+          <label class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-xs font-bold cursor-pointer select-none hover:border-pink-500 transition-all" title="Marcar para a visualização Hoje">
+            <input id="quick-task-is-today" type="checkbox" class="accent-pink-500 rounded cursor-pointer" />
+            <span>🚩 Hoje</span>
+          </label>
           <select id="quick-task-priority" class="rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-2.5 py-1.5 text-xs font-semibold">
             <option value="P1">🔥 P1 Urgente</option>
             <option value="P2">⚡ P2 Alta</option>
@@ -478,14 +482,21 @@
         <form id="task-detail-form" class="space-y-5">
           <input type="hidden" id="form-task-id" />
 
-          <!-- Title & Color -->
+          <!-- Title, Hoje Flag & Color -->
           <div class="flex flex-col sm:flex-row gap-3">
             <div class="flex-1">
               <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">Título da Tarefa *</label>
               <input id="form-task-title" type="text" required
                 class="w-full rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-4 py-2.5 text-sm font-semibold focus:outline-none focus:border-pink-500" />
             </div>
-            <div class="w-full sm:w-36">
+            <div class="w-full sm:w-40">
+              <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">Foco do Dia</label>
+              <label class="h-10 px-4 rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 flex items-center gap-2 cursor-pointer select-none hover:border-pink-500 transition-all">
+                <input id="form-task-is-today" type="checkbox" class="w-4 h-4 accent-pink-500 rounded cursor-pointer" />
+                <span class="text-xs font-extrabold text-pink-500">🚩 Hoje</span>
+              </label>
+            </div>
+            <div class="w-full sm:w-32">
               <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">Cor do Card</label>
               <input id="form-task-color" type="color" value="#f97316"
                 class="w-full h-10 rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 p-1 cursor-pointer" />

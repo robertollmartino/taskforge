@@ -463,3 +463,71 @@ def test_executions_observability_endpoint(
     data = exec_res.json()
     assert data["count"] > 0
     assert "duration_ms" in data["items"][0]
+
+
+def test_persistent_today_flag_independent_of_due_date(
+    client: TestClient, admin_headers: dict[str, str]
+):
+    # 1. Create a task with a past date (e.g., several days ago) and no 'is_today' flag initially
+    t_res = client.post(
+        "/api/v1/tasks",
+        headers=admin_headers,
+        json={
+            "title": "Tarefa Persistente na Flag Hoje",
+            "due_date": "2020-01-01",
+            "is_today": False,
+            "custom_values": {"valor_contrato": 750},
+        },
+    )
+    assert t_res.status_code == 201
+    task_id = t_res.json()["task"]["id"]
+    assert t_res.json()["task"]["is_today"] is False
+
+    # Verify it does NOT appear in 'Hoje' view yet
+    views = client.get("/api/v1/views", headers=admin_headers).json()["items"]
+    hoje_view = next(v for v in views if v["name"] == "Hoje")
+    q_before = client.post(
+        "/api/v1/tasks/query",
+        headers=admin_headers,
+        json={"filter_tree": hoje_view["filters"]},
+    ).json()["items"]
+    assert all(x["id"] != task_id for x in q_before)
+
+    # 2. Flag 'is_today' = True -> must appear in 'Hoje' view even though due_date is 2020-01-01
+    flag_res = client.patch(
+        f"/api/v1/tasks/{task_id}",
+        headers=admin_headers,
+        json={"is_today": True},
+    )
+    assert flag_res.status_code == 200
+    assert flag_res.json()["task"]["is_today"] is True
+
+    q_after = client.post(
+        "/api/v1/tasks/query",
+        headers=admin_headers,
+        json={"filter_tree": hoje_view["filters"]},
+    ).json()["items"]
+    assert any(x["id"] == task_id for x in q_after)
+
+    # Also verify GET /api/v1/tasks?due_preset=today returns it
+    preset_items = client.get(
+        "/api/v1/tasks?due_preset=today", headers=admin_headers
+    ).json()["items"]
+    assert any(x["id"] == task_id for x in preset_items)
+
+    # 3. Unflag 'is_today' = False -> removed from 'Hoje' view
+    unflag_res = client.patch(
+        f"/api/v1/tasks/{task_id}",
+        headers=admin_headers,
+        json={"is_today": False},
+    )
+    assert unflag_res.status_code == 200
+    assert unflag_res.json()["task"]["is_today"] is False
+
+    q_unflagged = client.post(
+        "/api/v1/tasks/query",
+        headers=admin_headers,
+        json={"filter_tree": hoje_view["filters"]},
+    ).json()["items"]
+    assert all(x["id"] != task_id for x in q_unflagged)
+
