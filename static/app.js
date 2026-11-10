@@ -313,7 +313,6 @@ function applySavedView(view, shouldFetch = true) {
 function renderSidebarViews() {
   const container = document.getElementById('sidebar-views-list');
   if (!container) return;
-  const icons = { table: '⊞', kanban: ' Columns ', list: '☰' };
   const iconEmoji = { table: '📊', kanban: '📋', list: '📑' };
 
   container.innerHTML = state.views.map((v) => {
@@ -331,6 +330,7 @@ function renderSidebarViews() {
         <div class="flex items-center gap-1">
           ${v.is_default ? '<span class="text-[9px] px-1.5 py-0.2 rounded bg-orange-500/20 text-orange-400">Padrão</span>' : ''}
           ${v.is_shared ? '<span class="text-[9px] text-zinc-400" title="Compartilhada">🌐</span>' : '<span class="text-[9px] text-zinc-400" title="Privada">🔒</span>'}
+          <button type="button" onclick="event.stopPropagation(); handleQuickEditView('${v.id}')" title="Editar nome / padrão / compartilhamento" class="opacity-60 hover:opacity-100 text-[10px] px-1 hover:text-pink-400">✎</button>
         </div>
       </div>
     `;
@@ -342,6 +342,32 @@ window.handleSelectView = function(viewId) {
   if (v) {
     applySavedView(v, true);
     closeMobileSidebar();
+  }
+};
+
+window.handleQuickEditView = async function(viewId) {
+  const v = state.views.find((x) => x.id === viewId);
+  if (!v) return;
+  const newName = prompt('Nome da visualização:', v.name);
+  if (!newName || !newName.trim()) return;
+  const isShared = confirm('Compartilhar esta visualização com outros usuários? (OK = Compartilhada, Cancelar = Privada)');
+  const isDefault = confirm('Definir esta visualização como Padrão ao abrir o app? (OK = Sim, Cancelar = Não)');
+  const payload = {
+    name: newName.trim(),
+    view_type: v.view_type,
+    visible_columns: v.visible_columns,
+    column_order: v.column_order,
+    filters: v.filters,
+    sorts: v.sorts,
+    group_by: v.group_by || '',
+    is_default: isDefault,
+    is_shared: isShared
+  };
+  const res = await api(`/api/v1/views/${v.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+  showToast('Visualização editada com sucesso!', 'success');
+  await loadMetadata();
+  if (state.activeView && state.activeView.id === v.id) {
+    applySavedView(res.view, false);
   }
 };
 
@@ -358,7 +384,7 @@ function renderSidebarProjects() {
     const selected = state.selectedProjects.includes(p.id);
     return `
       <div onclick="toggleProjectFilter('${p.id}')"
-        class="flex items-center justify-between px-3 py-2 rounded-xl cursor-pointer text-xs transition-all ${
+        class="group flex items-center justify-between px-3 py-2 rounded-xl cursor-pointer text-xs transition-all ${
           selected
             ? 'bg-pink-500/15 text-pink-400 font-bold border border-pink-500/30'
             : 'text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60'
@@ -367,7 +393,10 @@ function renderSidebarProjects() {
           <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${escapeHtml(p.color)}"></span>
           <span class="truncate">${escapeHtml(p.name)}</span>
         </div>
-        <input type="checkbox" ${selected ? 'checked' : ''} class="pointer-events-none accent-pink-500 rounded" />
+        <div class="flex items-center gap-1.5">
+          <button type="button" onclick="event.stopPropagation(); openEditProjectModal('${p.id}')" title="Editar projeto" class="opacity-60 hover:opacity-100 text-[10px] px-1 hover:text-pink-400">✎</button>
+          <input type="checkbox" ${selected ? 'checked' : ''} class="pointer-events-none accent-pink-500 rounded" />
+        </div>
       </div>
     `;
   }).join('');
@@ -393,6 +422,12 @@ window.toggleProjectFilter = function(projectId) {
   renderSidebarProjects();
   state.page = 1;
   fetchTasks();
+};
+
+window.openEditProjectModal = async function(projectId) {
+  closeMobileSidebar();
+  await openAdminModal('projects');
+  startEditProject(projectId);
 };
 
 function populateQuickAddDropdowns() {
@@ -1489,8 +1524,12 @@ async function renderAdminTabContent(tab) {
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- Custom Fields Management -->
         <div class="space-y-4">
-          <h4 class="text-sm font-extrabold text-orange-400">🧩 Criar Campo Personalizado</h4>
-          <form onsubmit="handleCreateCustomField(event)" class="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 space-y-3">
+          <div class="flex items-center justify-between">
+            <h4 id="cf-form-title" class="text-sm font-extrabold text-orange-400">🧩 Criar Campo Personalizado</h4>
+            <button id="cf-cancel-edit" type="button" onclick="resetCustomFieldForm()" class="hidden text-xs text-zinc-400 hover:text-white">Cancelar edição ✕</button>
+          </div>
+          <form onsubmit="handleSaveCustomField(event)" class="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 space-y-3">
+            <input id="cf-edit-id" type="hidden" value="" />
             <div class="grid grid-cols-2 gap-2">
               <input id="cf-name" type="text" required placeholder="Nome (ex: Orçamento)" class="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs" />
               <select id="cf-type" class="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs">
@@ -1506,10 +1545,13 @@ async function renderAdminTabContent(tab) {
                 <option value="url">URL</option>
               </select>
             </div>
-            <input id="cf-options" type="text" placeholder="Opções p/ Listbox (separadas por vírgula)" class="w-full rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs" />
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <input id="cf-options" type="text" placeholder="Opções p/ Listbox (separadas por vírgula)" class="w-full rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs" />
+              <input id="cf-default" type="text" placeholder="Valor padrão (opcional)" class="w-full rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs" />
+            </div>
             <div class="flex items-center justify-between">
               <label class="flex items-center gap-2 text-xs"><input id="cf-req" type="checkbox" class="accent-pink-500" /> Campo Obrigatório</label>
-              <button type="submit" class="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-pink-500 text-white text-xs font-bold">+ Criar Campo</button>
+              <button id="cf-submit-btn" type="submit" class="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-pink-500 text-white text-xs font-bold">+ Criar Campo</button>
             </div>
           </form>
 
@@ -1520,8 +1562,12 @@ async function renderAdminTabContent(tab) {
                   <span class="font-bold">${escapeHtml(cf.name)}</span>
                   <span class="text-zinc-400 font-mono ml-1">(custom.${escapeHtml(cf.key)} • ${cf.field_type})</span>
                   ${cf.required ? '<span class="ml-1 text-rose-400 font-bold">Obrigatório</span>' : ''}
+                  ${(cf.options && cf.options.length) ? `<p class="text-[10px] text-zinc-400 mt-0.5">Opções: ${escapeHtml(cf.options.join(', '))}</p>` : ''}
                 </div>
-                <button onclick="handleDeleteCustomField('${cf.id}')" class="text-rose-400 hover:underline">Excluir</button>
+                <div class="flex items-center gap-2 shrink-0">
+                  <button onclick="startEditCustomField('${cf.id}')" class="px-2.5 py-1 rounded-lg bg-pink-500/15 text-pink-400 font-semibold hover:bg-pink-500/25">Editar</button>
+                  <button onclick="handleDeleteCustomField('${cf.id}')" class="text-rose-400 hover:underline px-1">Excluir</button>
+                </div>
               </div>
             `).join('') || '<p class="text-xs text-zinc-400">Nenhum campo personalizado criado.</p>'}
           </div>
@@ -1529,14 +1575,18 @@ async function renderAdminTabContent(tab) {
 
         <!-- Custom Statuses Management -->
         <div class="space-y-4">
-          <h4 class="text-sm font-extrabold text-pink-400">🏷️ Status Personalizados</h4>
-          <form onsubmit="handleCreateStatus(event)" class="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 space-y-3">
+          <div class="flex items-center justify-between">
+            <h4 id="st-form-title" class="text-sm font-extrabold text-pink-400">🏷️ Status Personalizados</h4>
+            <button id="st-cancel-edit" type="button" onclick="resetStatusForm()" class="hidden text-xs text-zinc-400 hover:text-white">Cancelar edição ✕</button>
+          </div>
+          <form onsubmit="handleSaveStatus(event)" class="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 space-y-3">
+            <input id="st-edit-id" type="hidden" value="" />
             <div class="flex gap-2">
               <input id="st-name" type="text" required placeholder="Nome do Status (ex: Em Revisão)" class="flex-1 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs" />
               <input id="st-color" type="color" value="#a855f7" class="w-12 h-9 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-1" />
               <input id="st-pos" type="number" value="25" placeholder="Ordem" class="w-20 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-2 py-2 text-xs" />
             </div>
-            <button type="submit" class="w-full py-2 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 text-white text-xs font-bold">+ Adicionar Status</button>
+            <button id="st-submit-btn" type="submit" class="w-full py-2 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 text-white text-xs font-bold">+ Adicionar Status</button>
           </form>
           <div class="space-y-2">
             ${state.statuses.map((s) => `
@@ -1544,9 +1594,12 @@ async function renderAdminTabContent(tab) {
                 <div class="flex items-center gap-2">
                   <span class="w-3 h-3 rounded-full" style="background:${escapeHtml(s.color)}"></span>
                   <span class="font-bold">${escapeHtml(s.name)}</span>
-                  <span class="text-zinc-400 font-mono">(${escapeHtml(s.slug)})</span>
+                  <span class="text-zinc-400 font-mono">(${escapeHtml(s.slug)} • pos ${s.position})</span>
                 </div>
-                ${s.is_system ? '<span class="text-[10px] text-zinc-500">Sistema</span>' : `<button onclick="handleDeleteStatus('${s.id}')" class="text-rose-400">Excluir</button>`}
+                <div class="flex items-center gap-2">
+                  <button onclick="startEditStatus('${s.id}')" class="px-2.5 py-1 rounded-lg bg-pink-500/15 text-pink-400 font-semibold hover:bg-pink-500/25">Editar</button>
+                  ${s.is_system ? '<span class="text-[10px] text-zinc-500 px-1">Sistema</span>' : `<button onclick="handleDeleteStatus('${s.id}')" class="text-rose-400 px-1">Excluir</button>`}
+                </div>
               </div>
             `).join('')}
           </div>
@@ -1556,23 +1609,31 @@ async function renderAdminTabContent(tab) {
   } else if (tab === 'projects') {
     container.innerHTML = `
       <div class="space-y-5">
-        <form onsubmit="handleCreateProject(event)" class="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 flex flex-wrap gap-2 items-center">
+        <div class="flex items-center justify-between">
+          <h4 id="proj-form-title" class="text-xs font-extrabold uppercase text-orange-400">Criar Novo Projeto ou Categoria</h4>
+          <button id="proj-cancel-edit" type="button" onclick="resetProjectForm()" class="hidden text-xs text-zinc-400 hover:text-white">Cancelar edição ✕</button>
+        </div>
+        <form onsubmit="handleSaveProject(event)" class="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 flex flex-wrap gap-2 items-center">
+          <input id="proj-edit-id" type="hidden" value="" />
           <input id="proj-name" type="text" required placeholder="Nome do Projeto ou Categoria" class="flex-1 min-w-[180px] rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs" />
           <input id="proj-desc" type="text" placeholder="Descrição..." class="flex-1 min-w-[180px] rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs" />
           <input id="proj-color" type="color" value="#f97316" class="w-10 h-9 rounded-xl p-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800" />
-          <button type="submit" class="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-pink-500 text-white text-xs font-bold">+ Criar Projeto</button>
+          <button id="proj-submit-btn" type="submit" class="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-pink-500 text-white text-xs font-bold">+ Criar Projeto</button>
         </form>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           ${state.projects.map((p) => `
-            <div class="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-              <div class="flex items-center gap-3">
-                <span class="w-4 h-4 rounded-full" style="background:${escapeHtml(p.color)}"></span>
-                <div>
-                  <p class="text-xs font-bold">${escapeHtml(p.name)}</p>
-                  <p class="text-[11px] text-zinc-400">${escapeHtml(p.description || '')}</p>
+            <div class="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-2">
+              <div class="flex items-center gap-3 min-w-0">
+                <span class="w-4 h-4 rounded-full shrink-0" style="background:${escapeHtml(p.color)}"></span>
+                <div class="min-w-0">
+                  <p class="text-xs font-bold truncate">${escapeHtml(p.name)}</p>
+                  <p class="text-[11px] text-zinc-400 truncate">${escapeHtml(p.description || '')}</p>
                 </div>
               </div>
-              <button onclick="handleDeleteProject('${p.id}')" class="text-xs text-rose-400 hover:underline">Excluir</button>
+              <div class="flex items-center gap-2 shrink-0 text-xs">
+                <button onclick="startEditProject('${p.id}')" class="px-2.5 py-1 rounded-lg bg-pink-500/15 text-pink-400 font-semibold hover:bg-pink-500/25">Editar</button>
+                <button onclick="handleDeleteProject('${p.id}')" class="text-rose-400 hover:underline px-1">Excluir</button>
+              </div>
             </div>
           `).join('')}
         </div>
@@ -1581,8 +1642,12 @@ async function renderAdminTabContent(tab) {
   } else if (tab === 'users') {
     container.innerHTML = `
       <div class="space-y-5">
-        <form onsubmit="handleCreateUser(event)" class="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 space-y-3">
-          <h4 class="text-xs font-extrabold uppercase text-orange-400">Cadastrar Novo Usuário & Papel (RBAC)</h4>
+        <form onsubmit="handleSaveUser(event)" class="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 space-y-3">
+          <div class="flex items-center justify-between">
+            <h4 id="usr-form-title" class="text-xs font-extrabold uppercase text-orange-400">Cadastrar Novo Usuário & Papel (RBAC)</h4>
+            <button id="usr-cancel-edit" type="button" onclick="resetUserForm()" class="hidden text-xs text-zinc-400 hover:text-white">Cancelar edição ✕</button>
+          </div>
+          <input id="usr-edit-id" type="hidden" value="" />
           <div class="grid grid-cols-1 sm:grid-cols-5 gap-2">
             <input id="usr-username" type="text" required placeholder="Username" class="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs" />
             <input id="usr-fullname" type="text" required placeholder="Nome Completo" class="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs" />
@@ -1595,7 +1660,7 @@ async function renderAdminTabContent(tab) {
               <option value="viewer">Visualizador (Somente leitura)</option>
             </select>
           </div>
-          <button type="submit" class="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-pink-500 text-white text-xs font-bold">+ Criar Usuário</button>
+          <button id="usr-submit-btn" type="submit" class="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-pink-500 text-white text-xs font-bold">+ Criar Usuário</button>
         </form>
         <div class="space-y-2">
           ${state.users.map((u) => `
@@ -1605,7 +1670,10 @@ async function renderAdminTabContent(tab) {
                 <span class="text-zinc-400">(@${escapeHtml(u.username)} • ${escapeHtml(u.email)})</span>
                 <span class="ml-2 px-2 py-0.5 rounded-full bg-pink-500/15 text-pink-400 font-bold uppercase text-[10px]">${escapeHtml(u.role)}</span>
               </div>
-              ${u.id !== state.user.id ? `<button onclick="handleDeleteUser('${u.id}')" class="text-rose-400">Remover</button>` : '<span class="text-[10px] text-emerald-400">Você</span>'}
+              <div class="flex items-center gap-2">
+                <button onclick="startEditUser('${u.id}')" class="px-2.5 py-1 rounded-lg bg-pink-500/15 text-pink-400 font-semibold hover:bg-pink-500/25">Editar</button>
+                ${u.id !== state.user.id ? `<button onclick="handleDeleteUser('${u.id}')" class="text-rose-400 px-1">Remover</button>` : '<span class="text-[10px] text-emerald-400 px-1">Você</span>'}
+              </div>
             </div>
           `).join('')}
         </div>
@@ -1616,11 +1684,16 @@ async function renderAdminTabContent(tab) {
       api('/api/v1/webhooks'),
       api('/api/v1/webhooks/deliveries?limit=25')
     ]);
+    state.webhooksList = whRes.items || [];
     const eventsList = whRes.supported_events || [];
     container.innerHTML = `
       <div class="space-y-6">
-        <form onsubmit="handleCreateWebhook(event)" class="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 space-y-3">
-          <h4 class="text-xs font-extrabold uppercase text-pink-400">🪝 Cadastrar Novo Webhook de Saída</h4>
+        <form onsubmit="handleSaveWebhook(event)" class="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 space-y-3">
+          <div class="flex items-center justify-between">
+            <h4 id="wh-form-title" class="text-xs font-extrabold uppercase text-pink-400">🪝 Cadastrar Novo Webhook de Saída</h4>
+            <button id="wh-cancel-edit" type="button" onclick="resetWebhookForm()" class="hidden text-xs text-zinc-400 hover:text-white">Cancelar edição ✕</button>
+          </div>
+          <input id="wh-edit-id" type="hidden" value="" />
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <input id="wh-name" type="text" required placeholder="Nome (ex: n8n Workflow)" class="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs" />
             <input id="wh-url" type="url" required placeholder="https://seu-n8n.com/webhook/..." class="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs" />
@@ -1636,7 +1709,12 @@ async function renderAdminTabContent(tab) {
               `).join('')}
             </div>
           </div>
-          <button type="submit" class="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-pink-500 text-white text-xs font-bold">+ Salvar Webhook</button>
+          <div class="flex items-center justify-between">
+            <label class="flex items-center gap-2 text-xs">
+              <input id="wh-active" type="checkbox" checked class="accent-pink-500" /> Webhook Ativo
+            </label>
+            <button id="wh-submit-btn" type="submit" class="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-pink-500 text-white text-xs font-bold">+ Salvar Webhook</button>
+          </div>
         </form>
 
         <div class="space-y-2">
@@ -1644,10 +1722,16 @@ async function renderAdminTabContent(tab) {
           ${(whRes.items || []).map((w) => `
             <div class="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-2 text-xs">
               <div>
-                <p class="font-bold">${escapeHtml(w.name)} — <code class="text-pink-400">${escapeHtml(w.target_url)}</code></p>
+                <p class="font-bold">
+                  <span class="inline-block w-2 h-2 rounded-full mr-1 ${w.is_active ? 'bg-emerald-500' : 'bg-zinc-500'}"></span>
+                  ${escapeHtml(w.name)} — <code class="text-pink-400">${escapeHtml(w.target_url)}</code>
+                </p>
                 <p class="text-[11px] text-zinc-400">Eventos: ${(w.events || []).join(', ')}</p>
               </div>
-              <button onclick="handleDeleteWebhook('${w.id}')" class="text-rose-400">Excluir</button>
+              <div class="flex items-center gap-2">
+                <button onclick="startEditWebhook('${w.id}')" class="px-2.5 py-1 rounded-lg bg-pink-500/15 text-pink-400 font-semibold hover:bg-pink-500/25">Editar</button>
+                <button onclick="handleDeleteWebhook('${w.id}')" class="text-rose-400 px-1">Excluir</button>
+              </div>
             </div>
           `).join('')}
         </div>
@@ -1789,88 +1873,236 @@ async function renderAdminTabContent(tab) {
   }
 }
 
-// Admin Handlers
-window.handleCreateCustomField = async function(e) {
+// --- Custom Fields Create / Edit / Delete ---
+window.startEditCustomField = function(id) {
+  const cf = state.customFields.find((f) => f.id === id);
+  if (!cf) return;
+  document.getElementById('cf-edit-id').value = cf.id;
+  document.getElementById('cf-name').value = cf.name;
+  document.getElementById('cf-type').value = cf.field_type;
+  document.getElementById('cf-options').value = (cf.options || []).join(', ');
+  document.getElementById('cf-default').value = cf.default_value ?? '';
+  document.getElementById('cf-req').checked = Boolean(cf.required);
+  document.getElementById('cf-form-title').textContent = `✏️ Editando Campo: ${cf.name}`;
+  document.getElementById('cf-submit-btn').textContent = '💾 Salvar Alterações';
+  document.getElementById('cf-cancel-edit').classList.remove('hidden');
+};
+
+window.resetCustomFieldForm = function() {
+  document.getElementById('cf-edit-id').value = '';
+  document.getElementById('cf-name').value = '';
+  document.getElementById('cf-type').value = 'short_text';
+  document.getElementById('cf-options').value = '';
+  document.getElementById('cf-default').value = '';
+  document.getElementById('cf-req').checked = false;
+  document.getElementById('cf-form-title').textContent = '🧩 Criar Campo Personalizado';
+  document.getElementById('cf-submit-btn').textContent = '+ Criar Campo';
+  document.getElementById('cf-cancel-edit').classList.add('hidden');
+};
+
+window.handleSaveCustomField = async function(e) {
   e.preventDefault();
+  const editId = document.getElementById('cf-edit-id').value;
   const optsRaw = document.getElementById('cf-options').value;
   const options = optsRaw ? optsRaw.split(',').map((s) => s.trim()).filter(Boolean) : [];
-  await api('/api/v1/custom-fields', {
-    method: 'POST',
-    body: JSON.stringify({
-      name: document.getElementById('cf-name').value,
-      field_type: document.getElementById('cf-type').value,
-      options,
-      required: document.getElementById('cf-req').checked
-    })
-  });
-  showToast('Campo personalizado criado!', 'success');
+  const defVal = document.getElementById('cf-default').value.trim();
+  const payload = {
+    name: document.getElementById('cf-name').value,
+    field_type: document.getElementById('cf-type').value,
+    options,
+    default_value: defVal !== '' ? defVal : null,
+    required: document.getElementById('cf-req').checked
+  };
+  if (editId) {
+    await api(`/api/v1/custom-fields/${editId}`, { method: 'PATCH', body: JSON.stringify(payload) });
+    showToast('Campo personalizado atualizado!', 'success');
+  } else {
+    await api('/api/v1/custom-fields', { method: 'POST', body: JSON.stringify(payload) });
+    showToast('Campo personalizado criado!', 'success');
+  }
   await loadMetadata();
   await renderAdminTabContent('fields');
+  await fetchTasks();
 };
 
 window.handleDeleteCustomField = async function(id) {
   await api(`/api/v1/custom-fields/${id}`, { method: 'DELETE' });
   await loadMetadata();
   await renderAdminTabContent('fields');
+  await fetchTasks();
 };
 
-window.handleCreateStatus = async function(e) {
+// --- Statuses Create / Edit / Delete ---
+window.startEditStatus = function(id) {
+  const st = state.statuses.find((s) => s.id === id);
+  if (!st) return;
+  document.getElementById('st-edit-id').value = st.id;
+  document.getElementById('st-name').value = st.name;
+  document.getElementById('st-color').value = st.color || '#a855f7';
+  document.getElementById('st-pos').value = st.position ?? 25;
+  document.getElementById('st-form-title').textContent = `✏️ Editando Status: ${st.name}`;
+  document.getElementById('st-submit-btn').textContent = '💾 Salvar Status';
+  document.getElementById('st-cancel-edit').classList.remove('hidden');
+};
+
+window.resetStatusForm = function() {
+  document.getElementById('st-edit-id').value = '';
+  document.getElementById('st-name').value = '';
+  document.getElementById('st-color').value = '#a855f7';
+  document.getElementById('st-pos').value = '25';
+  document.getElementById('st-form-title').textContent = '🏷️ Status Personalizados';
+  document.getElementById('st-submit-btn').textContent = '+ Adicionar Status';
+  document.getElementById('st-cancel-edit').classList.add('hidden');
+};
+
+window.handleSaveStatus = async function(e) {
   e.preventDefault();
-  await api('/api/v1/statuses', {
-    method: 'POST',
-    body: JSON.stringify({
-      name: document.getElementById('st-name').value,
-      color: document.getElementById('st-color').value,
-      position: parseInt(document.getElementById('st-pos').value || '50', 10)
-    })
-  });
-  showToast('Status personalizado criado!', 'success');
+  const editId = document.getElementById('st-edit-id').value;
+  const payload = {
+    name: document.getElementById('st-name').value,
+    color: document.getElementById('st-color').value,
+    position: parseInt(document.getElementById('st-pos').value || '50', 10)
+  };
+  if (editId) {
+    await api(`/api/v1/statuses/${editId}`, { method: 'PATCH', body: JSON.stringify(payload) });
+    showToast('Status atualizado!', 'success');
+  } else {
+    await api('/api/v1/statuses', { method: 'POST', body: JSON.stringify(payload) });
+    showToast('Status personalizado criado!', 'success');
+  }
   await loadMetadata();
   await renderAdminTabContent('fields');
+  await fetchTasks();
 };
 
 window.handleDeleteStatus = async function(id) {
   await api(`/api/v1/statuses/${id}`, { method: 'DELETE' });
   await loadMetadata();
   await renderAdminTabContent('fields');
+  await fetchTasks();
 };
 
-window.handleCreateProject = async function(e) {
+// --- Projects Create / Edit / Delete ---
+window.startEditProject = function(id) {
+  const p = state.projects.find((x) => x.id === id);
+  if (!p) return;
+  document.getElementById('proj-edit-id').value = p.id;
+  document.getElementById('proj-name').value = p.name;
+  document.getElementById('proj-desc').value = p.description || '';
+  document.getElementById('proj-color').value = p.color || '#f97316';
+  document.getElementById('proj-form-title').textContent = `✏️ Editando Projeto: ${p.name}`;
+  document.getElementById('proj-submit-btn').textContent = '💾 Salvar Projeto';
+  document.getElementById('proj-cancel-edit').classList.remove('hidden');
+};
+
+window.resetProjectForm = function() {
+  document.getElementById('proj-edit-id').value = '';
+  document.getElementById('proj-name').value = '';
+  document.getElementById('proj-desc').value = '';
+  document.getElementById('proj-color').value = '#f97316';
+  document.getElementById('proj-form-title').textContent = 'Criar Novo Projeto ou Categoria';
+  document.getElementById('proj-submit-btn').textContent = '+ Criar Projeto';
+  document.getElementById('proj-cancel-edit').classList.add('hidden');
+};
+
+window.handleSaveProject = async function(e) {
   e.preventDefault();
-  await api('/api/v1/projects', {
-    method: 'POST',
-    body: JSON.stringify({
-      name: document.getElementById('proj-name').value,
-      description: document.getElementById('proj-desc').value,
-      color: document.getElementById('proj-color').value
-    })
-  });
-  showToast('Projeto criado!', 'success');
+  const editId = document.getElementById('proj-edit-id').value;
+  const payload = {
+    name: document.getElementById('proj-name').value,
+    description: document.getElementById('proj-desc').value,
+    color: document.getElementById('proj-color').value
+  };
+  if (editId) {
+    await api(`/api/v1/projects/${editId}`, { method: 'PATCH', body: JSON.stringify(payload) });
+    showToast('Projeto atualizado!', 'success');
+  } else {
+    await api('/api/v1/projects', { method: 'POST', body: JSON.stringify(payload) });
+    showToast('Projeto criado!', 'success');
+  }
   await loadMetadata();
   await renderAdminTabContent('projects');
+  await fetchTasks();
 };
 
 window.handleDeleteProject = async function(id) {
   await api(`/api/v1/projects/${id}`, { method: 'DELETE' });
   await loadMetadata();
   await renderAdminTabContent('projects');
+  await fetchTasks();
 };
 
-window.handleCreateUser = async function(e) {
+// --- Users Create / Edit / Delete ---
+window.startEditUser = function(id) {
+  const u = state.users.find((x) => x.id === id);
+  if (!u) return;
+  document.getElementById('usr-edit-id').value = u.id;
+  const userInp = document.getElementById('usr-username');
+  userInp.value = u.username;
+  userInp.disabled = true;
+  document.getElementById('usr-fullname').value = u.full_name || '';
+  document.getElementById('usr-email').value = u.email || '';
+  const pwdInp = document.getElementById('usr-password');
+  pwdInp.value = '';
+  pwdInp.required = false;
+  pwdInp.placeholder = 'Nova senha (deixe em branco p/ manter)';
+  document.getElementById('usr-role').value = u.role || 'member';
+  document.getElementById('usr-form-title').textContent = `✏️ Editando Usuário: ${u.full_name} (@${u.username})`;
+  document.getElementById('usr-submit-btn').textContent = '💾 Salvar Usuário';
+  document.getElementById('usr-cancel-edit').classList.remove('hidden');
+};
+
+window.resetUserForm = function() {
+  document.getElementById('usr-edit-id').value = '';
+  const userInp = document.getElementById('usr-username');
+  userInp.value = '';
+  userInp.disabled = false;
+  document.getElementById('usr-fullname').value = '';
+  document.getElementById('usr-email').value = '';
+  const pwdInp = document.getElementById('usr-password');
+  pwdInp.value = '';
+  pwdInp.required = true;
+  pwdInp.placeholder = 'Senha';
+  document.getElementById('usr-role').value = 'member';
+  document.getElementById('usr-form-title').textContent = 'Cadastrar Novo Usuário & Papel (RBAC)';
+  document.getElementById('usr-submit-btn').textContent = '+ Criar Usuário';
+  document.getElementById('usr-cancel-edit').classList.add('hidden');
+};
+
+window.handleSaveUser = async function(e) {
   e.preventDefault();
-  await api('/api/v1/users', {
-    method: 'POST',
-    body: JSON.stringify({
-      username: document.getElementById('usr-username').value,
+  const editId = document.getElementById('usr-edit-id').value;
+  const pwd = document.getElementById('usr-password').value;
+  if (editId) {
+    const payload = {
       full_name: document.getElementById('usr-fullname').value,
       email: document.getElementById('usr-email').value,
-      password: document.getElementById('usr-password').value,
       role: document.getElementById('usr-role').value
-    })
-  });
-  showToast('Usuário criado!', 'success');
+    };
+    if (pwd && pwd.trim()) payload.password = pwd.trim();
+    await api(`/api/v1/users/${editId}`, { method: 'PATCH', body: JSON.stringify(payload) });
+    if (state.user && editId === state.user.id) {
+      const me = await api('/api/v1/auth/me');
+      state.user = me.user;
+      renderUserHeader();
+    }
+    showToast('Usuário atualizado!', 'success');
+  } else {
+    await api('/api/v1/users', {
+      method: 'POST',
+      body: JSON.stringify({
+        username: document.getElementById('usr-username').value,
+        full_name: document.getElementById('usr-fullname').value,
+        email: document.getElementById('usr-email').value,
+        password: pwd,
+        role: document.getElementById('usr-role').value
+      })
+    });
+    showToast('Usuário criado!', 'success');
+  }
   await loadMetadata();
   await renderAdminTabContent('users');
+  await fetchTasks();
 };
 
 window.handleDeleteUser = async function(id) {
@@ -1879,19 +2111,55 @@ window.handleDeleteUser = async function(id) {
   await renderAdminTabContent('users');
 };
 
-window.handleCreateWebhook = async function(e) {
-  e.preventDefault();
-  const checked = Array.from(document.querySelectorAll('input[name="wh-events"]:checked')).map((el) => el.value);
-  await api('/api/v1/webhooks', {
-    method: 'POST',
-    body: JSON.stringify({
-      name: document.getElementById('wh-name').value,
-      target_url: document.getElementById('wh-url').value,
-      secret: document.getElementById('wh-secret').value,
-      events: checked
-    })
+// --- Webhooks Create / Edit / Delete ---
+window.startEditWebhook = function(id) {
+  const w = (state.webhooksList || []).find((x) => x.id === id);
+  if (!w) return;
+  document.getElementById('wh-edit-id').value = w.id;
+  document.getElementById('wh-name').value = w.name;
+  document.getElementById('wh-url').value = w.target_url;
+  document.getElementById('wh-secret').value = w.secret || '';
+  document.getElementById('wh-active').checked = Boolean(w.is_active);
+  document.querySelectorAll('input[name="wh-events"]').forEach((el) => {
+    el.checked = (w.events || []).includes(el.value);
   });
-  showToast('Webhook cadastrado!', 'success');
+  document.getElementById('wh-form-title').textContent = `✏️ Editando Webhook: ${w.name}`;
+  document.getElementById('wh-submit-btn').textContent = '💾 Atualizar Webhook';
+  document.getElementById('wh-cancel-edit').classList.remove('hidden');
+};
+
+window.resetWebhookForm = function() {
+  document.getElementById('wh-edit-id').value = '';
+  document.getElementById('wh-name').value = '';
+  document.getElementById('wh-url').value = '';
+  document.getElementById('wh-secret').value = '';
+  document.getElementById('wh-active').checked = true;
+  document.querySelectorAll('input[name="wh-events"]').forEach((el) => {
+    el.checked = true;
+  });
+  document.getElementById('wh-form-title').textContent = '🪝 Cadastrar Novo Webhook de Saída';
+  document.getElementById('wh-submit-btn').textContent = '+ Salvar Webhook';
+  document.getElementById('wh-cancel-edit').classList.add('hidden');
+};
+
+window.handleSaveWebhook = async function(e) {
+  e.preventDefault();
+  const editId = document.getElementById('wh-edit-id').value;
+  const checked = Array.from(document.querySelectorAll('input[name="wh-events"]:checked')).map((el) => el.value);
+  const payload = {
+    name: document.getElementById('wh-name').value,
+    target_url: document.getElementById('wh-url').value,
+    secret: document.getElementById('wh-secret').value,
+    events: checked,
+    is_active: document.getElementById('wh-active').checked
+  };
+  if (editId) {
+    await api(`/api/v1/webhooks/${editId}`, { method: 'PATCH', body: JSON.stringify(payload) });
+    showToast('Webhook atualizado!', 'success');
+  } else {
+    await api('/api/v1/webhooks', { method: 'POST', body: JSON.stringify(payload) });
+    showToast('Webhook cadastrado!', 'success');
+  }
   await renderAdminTabContent('webhooks');
 };
 

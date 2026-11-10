@@ -531,3 +531,68 @@ def test_persistent_today_flag_independent_of_due_date(
     ).json()["items"]
     assert all(x["id"] != task_id for x in q_unflagged)
 
+
+def test_editing_projects_fields_statuses_users_and_webhooks(
+    client: TestClient, admin_headers: dict[str, str]
+):
+    # 1. Edit Project
+    projects = client.get("/api/v1/projects", headers=admin_headers).json()["items"]
+    pid = projects[0]["id"]
+    p_upd = client.patch(
+        f"/api/v1/projects/{pid}",
+        headers=admin_headers,
+        json={"name": "Operações Editadas", "description": "Nova descrição", "color": "#ec4899"},
+    )
+    assert p_upd.status_code == 200
+    assert p_upd.json()["project"]["name"] == "Operações Editadas"
+    assert p_upd.json()["project"]["color"] == "#ec4899"
+
+    # 2. Edit Custom Field
+    fields = client.get("/api/v1/custom-fields", headers=admin_headers).json()["items"]
+    cf_id = fields[0]["id"]
+    cf_upd = client.patch(
+        f"/api/v1/custom-fields/{cf_id}",
+        headers=admin_headers,
+        json={"name": "Valor do Contrato (R$)", "required": False},
+    )
+    assert cf_upd.status_code == 200
+    assert cf_upd.json()["custom_field"]["name"] == "Valor do Contrato (R$)"
+    assert cf_upd.json()["custom_field"]["required"] is False
+
+    # 3. Edit Status
+    statuses = client.get("/api/v1/statuses", headers=admin_headers).json()["items"]
+    st_id = statuses[0]["id"]
+    st_upd = client.patch(
+        f"/api/v1/statuses/{st_id}",
+        headers=admin_headers,
+        json={"name": "Pendente Editado", "color": "#f97316", "position": 12},
+    )
+    assert st_upd.status_code == 200
+    assert st_upd.json()["status"]["name"] == "Pendente Editado"
+    assert st_upd.json()["status"]["position"] == 12
+
+    # 4. Edit User
+    users = client.get("/api/v1/users", headers=admin_headers).json()["items"]
+    target_user = next(u for u in users if u["username"] != "admin")
+    u_upd = client.patch(
+        f"/api/v1/users/{target_user['id']}",
+        headers=admin_headers,
+        json={"full_name": "Funcionário Um Editado", "role": "supervisor"},
+    )
+    assert u_upd.status_code == 200
+    assert u_upd.json()["user"]["full_name"] == "Funcionário Um Editado"
+    assert u_upd.json()["user"]["role"] == "supervisor"
+
+    # 5. Edit Webhook
+    webhooks = client.get("/api/v1/webhooks", headers=admin_headers).json()["items"]
+    wh_id = webhooks[0]["id"]
+    wh_upd = client.patch(
+        f"/api/v1/webhooks/{wh_id}",
+        headers=admin_headers,
+        json={"name": "Webhook Editado n8n", "is_active": False},
+    )
+    assert wh_upd.status_code == 200
+    assert wh_upd.json()["webhook"]["name"] == "Webhook Editado n8n"
+    assert wh_upd.json()["webhook"]["is_active"] is False
+
+
