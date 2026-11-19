@@ -201,6 +201,9 @@ def hydrate_tasks(conn: Any, task_rows: list[Any]) -> list[dict[str, Any]]:
             "due_date": t.get("due_date"),
             "due_time": t.get("due_time"),
             "is_today": bool(t.get("is_today", 0)),
+            "cliente_contato": t.get("cliente_contato") or "",
+            "origem": t.get("origem") or "",
+            "fone_email": t.get("fone_email") or "",
             "temporal_status": classify_task_temporal_status(t, today_str=today_str),
             "recurrence": recurrence,
             "custom_values": custom_values,
@@ -330,15 +333,19 @@ def create_task_workflow(
         due_date = (data.get("due_date") or "").strip() or None
         due_time = (data.get("due_time") or "").strip() or None
         is_today_int = 1 if data.get("is_today") else 0
+        cliente_contato = str(data.get("cliente_contato") or "").strip()
+        origem = str(data.get("origem") or "").strip()
+        fone_email = str(data.get("fone_email") or "").strip()
 
         conn.execute(
             """
             INSERT INTO tasks (
                 id, code, title, description, notes, status_slug, priority,
                 project_id, assignee_id, participants_json, tags_json, color,
-                due_date, due_time, is_today, recurrence_json, custom_values_json,
+                due_date, due_time, is_today, cliente_contato, origem, fone_email,
+                recurrence_json, custom_values_json,
                 position, created_by, completed_at, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 task_id,
@@ -356,6 +363,9 @@ def create_task_workflow(
                 due_date,
                 due_time,
                 is_today_int,
+                cliente_contato,
+                origem,
+                fone_email,
                 json.dumps(data["recurrence"], ensure_ascii=False) if data.get("recurrence") else None,
                 json.dumps(custom_vals, ensure_ascii=False),
                 position,
@@ -448,6 +458,9 @@ def update_task_workflow(
         new_due_date = (patch["due_date"] or "").strip() or None if "due_date" in patch else old["due_date"]
         new_due_time = (patch["due_time"] or "").strip() or None if "due_time" in patch else old["due_time"]
         new_is_today = (1 if patch["is_today"] else 0) if "is_today" in patch and patch["is_today"] is not None else int(old.get("is_today") or 0)
+        new_cliente_contato = str(patch["cliente_contato"] or "").strip() if "cliente_contato" in patch and patch["cliente_contato"] is not None else (old.get("cliente_contato") or "")
+        new_origem = str(patch["origem"] or "").strip() if "origem" in patch and patch["origem"] is not None else (old.get("origem") or "")
+        new_fone_email = str(patch["fone_email"] or "").strip() if "fone_email" in patch and patch["fone_email"] is not None else (old.get("fone_email") or "")
         new_pos = float(patch["position"]) if "position" in patch and patch["position"] is not None else float(old["position"])
 
         if "participants" in patch and patch["participants"] is not None:
@@ -479,6 +492,9 @@ def update_task_workflow(
             ("due_date", old["due_date"], new_due_date),
             ("due_time", old["due_time"], new_due_time),
             ("is_today", bool(old.get("is_today")), bool(new_is_today)),
+            ("cliente_contato", old.get("cliente_contato") or "", new_cliente_contato),
+            ("origem", old.get("origem") or "", new_origem),
+            ("fone_email", old.get("fone_email") or "", new_fone_email),
             ("color", old["color"], new_color),
         ]
         for field_key, ov, nv in tracked_pairs:
@@ -514,7 +530,8 @@ def update_task_workflow(
             UPDATE tasks SET
                 title = ?, description = ?, notes = ?, status_slug = ?, priority = ?,
                 project_id = ?, assignee_id = ?, participants_json = ?, tags_json = ?,
-                color = ?, due_date = ?, due_time = ?, is_today = ?, recurrence_json = ?,
+                color = ?, due_date = ?, due_time = ?, is_today = ?,
+                cliente_contato = ?, origem = ?, fone_email = ?, recurrence_json = ?,
                 custom_values_json = ?, position = ?, completed_at = ?, updated_at = ?
             WHERE id = ?
             """,
@@ -532,6 +549,9 @@ def update_task_workflow(
                 new_due_date,
                 new_due_time,
                 new_is_today,
+                new_cliente_contato,
+                new_origem,
+                new_fone_email,
                 new_recurrence_json,
                 json.dumps(new_custom, ensure_ascii=False),
                 new_pos,
@@ -574,9 +594,10 @@ def update_task_workflow(
                             INSERT INTO tasks (
                                 id, code, title, description, notes, status_slug, priority,
                                 project_id, assignee_id, participants_json, tags_json, color,
-                                due_date, due_time, is_today, recurrence_json, custom_values_json,
+                                due_date, due_time, is_today, cliente_contato, origem, fone_email,
+                                recurrence_json, custom_values_json,
                                 position, created_by, completed_at, created_at, updated_at
-                            ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, NULL, ?, ?)
+                            ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
                             """,
                             (
                                 new_rec_id,
@@ -592,6 +613,9 @@ def update_task_workflow(
                                 new_color,
                                 next_due,
                                 new_due_time,
+                                new_cliente_contato,
+                                new_origem,
+                                new_fone_email,
                                 new_recurrence_json,
                                 json.dumps(new_custom, ensure_ascii=False),
                                 new_pos + 1.0,

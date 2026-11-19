@@ -596,3 +596,55 @@ def test_editing_projects_fields_statuses_users_and_webhooks(
     assert wh_upd.json()["webhook"]["is_active"] is False
 
 
+def test_cliente_contato_origem_and_fone_email_fields(
+    client: TestClient, admin_headers: dict[str, str]
+):
+    res = client.post(
+        "/api/v1/tasks",
+        headers=admin_headers,
+        json={
+            "title": "Enviar Orçamento Fino",
+            "cliente_contato": "Empresa Alpha / João",
+            "origem": "WhatsApp",
+            "fone_email": "+55 11 98888-7777",
+        },
+    )
+    assert res.status_code == 201
+    task = res.json()["task"]
+    assert task["cliente_contato"] == "Empresa Alpha / João"
+    assert task["origem"] == "WhatsApp"
+    assert task["fone_email"] == "+55 11 98888-7777"
+
+    # Filter by origem = WhatsApp
+    q_res = client.post(
+        "/api/v1/tasks/query",
+        headers=admin_headers,
+        json={
+            "filter_tree": {
+                "logic": "AND",
+                "conditions": [{"field": "origem", "op": "eq", "value": "WhatsApp"}],
+                "groups": [],
+            }
+        },
+    )
+    assert q_res.status_code == 200
+    assert any(x["id"] == task["id"] for x in q_res.json()["items"])
+
+    # Update inline
+    upd_res = client.patch(
+        f"/api/v1/tasks/{task['id']}",
+        headers=admin_headers,
+        json={
+            "cliente_contato": "Empresa Alpha / Maria",
+            "origem": "E-mail",
+            "fone_email": "maria@alpha.com.br",
+        },
+    )
+    assert upd_res.status_code == 200
+    updated = upd_res.json()["task"]
+    assert updated["cliente_contato"] == "Empresa Alpha / Maria"
+    assert updated["origem"] == "E-mail"
+    assert updated["fone_email"] == "maria@alpha.com.br"
+
+
+

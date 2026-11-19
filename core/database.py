@@ -133,6 +133,9 @@ CREATE TABLE IF NOT EXISTS tasks (
     due_date TEXT,
     due_time TEXT,
     is_today INTEGER NOT NULL DEFAULT 0,
+    cliente_contato TEXT DEFAULT '',
+    origem TEXT DEFAULT '',
+    fone_email TEXT DEFAULT '',
     recurrence_json TEXT,
     custom_values_json TEXT NOT NULL DEFAULT '{}',
     position REAL NOT NULL DEFAULT 0,
@@ -193,8 +196,8 @@ CREATE TABLE IF NOT EXISTS saved_views (
     name TEXT NOT NULL,
     owner_id TEXT REFERENCES users(id) ON DELETE CASCADE,
     view_type TEXT NOT NULL DEFAULT 'table',
-    visible_columns_json TEXT NOT NULL DEFAULT '["code","is_today","title","status_slug","priority","project_id","assignee_id","due_date","tags"]',
-    column_order_json TEXT NOT NULL DEFAULT '["code","is_today","title","status_slug","priority","project_id","assignee_id","due_date","tags"]',
+    visible_columns_json TEXT NOT NULL DEFAULT '["code","is_today","title","cliente_contato","origem","fone_email","status_slug","priority","project_id","assignee_id","due_date","tags"]',
+    column_order_json TEXT NOT NULL DEFAULT '["code","is_today","title","cliente_contato","origem","fone_email","status_slug","priority","project_id","assignee_id","due_date","tags"]',
     filters_json TEXT NOT NULL DEFAULT '{"logic":"AND","conditions":[],"groups":[]}',
     sorts_json TEXT NOT NULL DEFAULT '[{"field":"position","dir":"asc"},{"field":"created_at","dir":"desc"}]',
     group_by TEXT DEFAULT '',
@@ -292,13 +295,19 @@ def init_db() -> None:
     with db_session() as conn:
         conn.executescript(SCHEMA_SQL)
 
-        # Safe migration for existing databases: add is_today column if missing
+        # Safe migration for existing databases: add is_today and contact/origin columns if missing
         task_cols = [
             r["name"] for r in conn.execute("PRAGMA table_info(tasks)").fetchall()
         ]
         if "is_today" not in task_cols:
             conn.execute("ALTER TABLE tasks ADD COLUMN is_today INTEGER NOT NULL DEFAULT 0;")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_is_today ON tasks(is_today);")
+        if "cliente_contato" not in task_cols:
+            conn.execute("ALTER TABLE tasks ADD COLUMN cliente_contato TEXT DEFAULT '';")
+        if "origem" not in task_cols:
+            conn.execute("ALTER TABLE tasks ADD COLUMN origem TEXT DEFAULT '';")
+        if "fone_email" not in task_cols:
+            conn.execute("ALTER TABLE tasks ADD COLUMN fone_email TEXT DEFAULT '';")
 
         # Seed default statuses
         default_statuses = [
@@ -386,8 +395,8 @@ def init_db() -> None:
         view_count = conn.execute("SELECT COUNT(*) AS c FROM saved_views").fetchone()["c"]
         if view_count == 0:
             default_cols = json.dumps([
-                "code", "is_today", "title", "status_slug", "priority", "project_id",
-                "assignee_id", "due_date", "tags"
+                "code", "is_today", "title", "cliente_contato", "origem", "fone_email",
+                "status_slug", "priority", "project_id", "assignee_id", "due_date", "tags"
             ])
             presets = [
                 (

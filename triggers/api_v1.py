@@ -179,6 +179,9 @@ class TaskCreateRequest(BaseModel):
     due_date: str | None = Field(default=None, description="YYYY-MM-DD ou null para sem data")
     due_time: str | None = Field(default=None, description="HH:MM opcional")
     is_today: bool = Field(default=False, description="Flag manual persistente 'Hoje'")
+    cliente_contato: str = Field(default="", description="Cliente ou Contato relacionado")
+    origem: str = Field(default="", description="Canal de origem: WhatsApp, E-mail, Rocket.Chat, Reunião/Ligação")
+    fone_email: str = Field(default="", description="Telefone ou E-mail de origem")
     recurrence: dict[str, Any] | None = None
     custom_values: dict[str, Any] = Field(default_factory=dict)
     subtasks: list[Any] = Field(default_factory=list)
@@ -199,6 +202,9 @@ class TaskUpdateRequest(BaseModel):
     due_date: str | None = None
     due_time: str | None = None
     is_today: bool | None = None
+    cliente_contato: str | None = None
+    origem: str | None = None
+    fone_email: str | None = None
     recurrence: dict[str, Any] | None = None
     custom_values: dict[str, Any] | None = None
     position: float | None = None
@@ -241,6 +247,9 @@ class SavedViewRequest(BaseModel):
             "code",
             "is_today",
             "title",
+            "cliente_contato",
+            "origem",
+            "fone_email",
             "status_slug",
             "priority",
             "project_id",
@@ -254,6 +263,9 @@ class SavedViewRequest(BaseModel):
             "code",
             "is_today",
             "title",
+            "cliente_contato",
+            "origem",
+            "fone_email",
             "status_slug",
             "priority",
             "project_id",

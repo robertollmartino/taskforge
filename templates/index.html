@@ -301,8 +301,21 @@
         <!-- Fast 1-Tap Quick Task Creation Bar -->
         <form id="quick-add-form" class="rounded-2xl bg-zinc-50 dark:bg-zinc-900/70 border border-zinc-200/80 dark:border-zinc-800/80 p-2.5 flex flex-wrap items-center gap-2 shadow-sm">
           <input id="quick-task-title" type="text" required
-            placeholder="⚡ Criar tarefa rápida (ex: Revisar contrato com cliente)... Pressione Enter"
-            class="flex-1 min-w-[200px] bg-transparent px-3 py-1.5 text-sm focus:outline-none" />
+            placeholder="⚡ Criar tarefa rápida (ex: Revisar contrato)... Pressione Enter"
+            class="flex-1 min-w-[180px] bg-transparent px-3 py-1.5 text-sm focus:outline-none" />
+          <input id="quick-task-cliente" type="text"
+            placeholder="👤 Cliente / Contato"
+            class="w-36 sm:w-40 rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-2.5 py-1.5 text-xs" />
+          <select id="quick-task-origem" class="rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-2.5 py-1.5 text-xs">
+            <option value="">📡 Origem...</option>
+            <option value="WhatsApp">💬 WhatsApp</option>
+            <option value="E-mail">✉️ E-mail</option>
+            <option value="Rocket.Chat">🚀 Rocket.Chat</option>
+            <option value="Reunião/Ligação">📞 Reunião/Ligação</option>
+          </select>
+          <input id="quick-task-fone-email" type="text"
+            placeholder="📱 Fone / E-mail"
+            class="w-36 sm:w-40 rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-2.5 py-1.5 text-xs" />
           <label class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-xs font-bold cursor-pointer select-none hover:border-pink-500 transition-all" title="Marcar para a visualização Hoje">
             <input id="quick-task-is-today" type="checkbox" class="accent-pink-500 rounded cursor-pointer" />
             <span>🚩 Hoje</span>
@@ -372,6 +385,8 @@
                 <select id="view-sort-field" class="flex-1 rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-2.5 py-2 text-xs">
                   <option value="priority">Prioridade</option>
                   <option value="due_date">Data de Vencimento</option>
+                  <option value="cliente_contato">Cliente / Contato</option>
+                  <option value="origem">Origem</option>
                   <option value="created_at">Data de Criação</option>
                   <option value="title">Título</option>
                   <option value="status_slug">Status</option>
@@ -525,6 +540,30 @@
             <div>
               <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">Responsável</label>
               <select id="form-task-assignee" class="w-full rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs"></select>
+            </div>
+          </div>
+
+          <!-- Cliente/Contato, Origem & Fone/E-mail -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">👤 Cliente / Contato</label>
+              <input id="form-task-cliente-contato" type="text" placeholder="Nome do cliente ou contato..."
+                class="w-full rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs" />
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">📡 Origem</label>
+              <select id="form-task-origem" class="w-full rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs font-semibold">
+                <option value="">Selecione a origem...</option>
+                <option value="WhatsApp">💬 WhatsApp</option>
+                <option value="E-mail">✉️ E-mail</option>
+                <option value="Rocket.Chat">🚀 Rocket.Chat</option>
+                <option value="Reunião/Ligação">📞 Reunião/Ligação</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold uppercase text-zinc-400 mb-1">📱 Fone / E-mail</label>
+              <input id="form-task-fone-email" type="text" placeholder="(11) 99999-9999 ou email@cliente.com"
+                class="w-full rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs" />
             </div>
           </div>
 

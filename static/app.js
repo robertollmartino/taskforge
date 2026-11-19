@@ -22,8 +22,8 @@ const state = {
   filterTree: { logic: 'AND', conditions: [], groups: [] },
   sorts: [{ field: 'priority', dir: 'asc' }, { field: 'due_date', dir: 'asc' }],
   groupBy: '',
-  visibleColumns: ['code', 'title', 'is_today', 'status_slug', 'priority', 'project_id', 'assignee_id', 'due_date', 'tags'],
-  columnOrder: ['code', 'title', 'is_today', 'status_slug', 'priority', 'project_id', 'assignee_id', 'due_date', 'tags'],
+  visibleColumns: ['code', 'title', 'is_today', 'cliente_contato', 'origem', 'fone_email', 'status_slug', 'priority', 'project_id', 'assignee_id', 'due_date', 'tags'],
+  columnOrder: ['code', 'title', 'is_today', 'cliente_contato', 'origem', 'fone_email', 'status_slug', 'priority', 'project_id', 'assignee_id', 'due_date', 'tags'],
   activeTaskModalId: null,
   sseSource: null,
   sseThrottleTimer: null,
@@ -31,10 +31,15 @@ const state = {
   activeAdminTab: 'fields'
 };
 
+const ORIGEM_OPTIONS = ['WhatsApp', 'E-mail', 'Rocket.Chat', 'Reunião/Ligação'];
+
 const NATIVE_COLUMNS = [
   { key: 'code', label: 'Código' },
   { key: 'title', label: 'Título' },
   { key: 'is_today', label: '🚩 Hoje' },
+  { key: 'cliente_contato', label: '👤 Cliente/Contato' },
+  { key: 'origem', label: '📡 Origem' },
+  { key: 'fone_email', label: '📱 Fone/E-mail' },
   { key: 'status_slug', label: 'Status' },
   { key: 'priority', label: 'Prioridade' },
   { key: 'project_id', label: 'Projeto' },
@@ -266,19 +271,25 @@ function applySavedView(view, shouldFetch = true) {
   const allKeys = getAllAvailableColumns().map((c) => c.key);
   state.visibleColumns = (view.visible_columns && view.visible_columns.length)
     ? view.visible_columns.slice()
-    : allKeys.slice(0, 9);
-  if (view.is_system && !state.visibleColumns.includes('is_today')) {
-    const titleIdx = state.visibleColumns.indexOf('title');
-    if (titleIdx >= 0) state.visibleColumns.splice(titleIdx + 1, 0, 'is_today');
-    else state.visibleColumns.unshift('is_today');
+    : allKeys.slice(0, 12);
+  if (view.is_system) {
+    for (const reqCol of ['is_today', 'cliente_contato', 'origem', 'fone_email']) {
+      if (!state.visibleColumns.includes(reqCol)) {
+        const titleIdx = state.visibleColumns.indexOf('title');
+        if (titleIdx >= 0) state.visibleColumns.splice(titleIdx + 1, 0, reqCol);
+        else state.visibleColumns.push(reqCol);
+      }
+    }
   }
   state.columnOrder = (view.column_order && view.column_order.length)
     ? view.column_order.slice()
     : state.visibleColumns.slice();
-  if (!state.columnOrder.includes('is_today')) {
-    const titleIdx = state.columnOrder.indexOf('title');
-    if (titleIdx >= 0) state.columnOrder.splice(titleIdx + 1, 0, 'is_today');
-    else state.columnOrder.unshift('is_today');
+  for (const reqCol of ['is_today', 'cliente_contato', 'origem', 'fone_email']) {
+    if (!state.columnOrder.includes(reqCol)) {
+      const titleIdx = state.columnOrder.indexOf('title');
+      if (titleIdx >= 0) state.columnOrder.splice(titleIdx + 1, 0, reqCol);
+      else state.columnOrder.push(reqCol);
+    }
   }
 
   // Ensure any custom field keys are also present in columnOrder
@@ -452,6 +463,8 @@ function populateGroupByDropdown() {
   const base = [
     { value: '', label: 'Sem agrupamento' },
     { value: 'is_today', label: '🚩 Flag Hoje' },
+    { value: 'cliente_contato', label: '👤 Cliente/Contato' },
+    { value: 'origem', label: '📡 Origem' },
     { value: 'status_slug', label: 'Status' },
     { value: 'priority', label: 'Prioridade' },
     { value: 'project_id', label: 'Projeto' },
@@ -505,6 +518,9 @@ window.toggleVisibleColumn = function(colKey) {
 function getFilterableFields() {
   const base = [
     { key: 'is_today', label: '🚩 Flag Hoje' },
+    { key: 'cliente_contato', label: '👤 Cliente/Contato' },
+    { key: 'origem', label: '📡 Origem' },
+    { key: 'fone_email', label: '📱 Fone/E-mail' },
     { key: 'title', label: 'Título' },
     { key: 'status_slug', label: 'Status' },
     { key: 'priority', label: 'Prioridade' },
@@ -933,6 +949,31 @@ function renderTableCell(task, colKey) {
   if (colKey === 'is_today') {
     return renderTodayFlagButton(task);
   }
+  if (colKey === 'cliente_contato') {
+    return `
+      <input type="text" value="${escapeHtml(task.cliente_contato || '')}"
+        placeholder="Cliente / Contato..."
+        onchange="inlinePatchTask('${task.id}', { cliente_contato: this.value })"
+        class="w-full min-w-[130px] bg-transparent border-b border-transparent focus:border-pink-500 focus:bg-white dark:focus:bg-zinc-950 focus:px-2 focus:py-1 rounded-lg focus:outline-none text-xs font-medium" />
+    `;
+  }
+  if (colKey === 'origem') {
+    return `
+      <select onchange="inlinePatchTask('${task.id}', { origem: this.value })"
+        class="rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 px-2 py-1 text-xs font-semibold">
+        <option value="">-</option>
+        ${ORIGEM_OPTIONS.map((o) => `<option value="${escapeHtml(o)}" ${task.origem === o ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}
+      </select>
+    `;
+  }
+  if (colKey === 'fone_email') {
+    return `
+      <input type="text" value="${escapeHtml(task.fone_email || '')}"
+        placeholder="Fone / E-mail..."
+        onchange="inlinePatchTask('${task.id}', { fone_email: this.value })"
+        class="w-full min-w-[130px] bg-transparent border-b border-transparent focus:border-pink-500 focus:bg-white dark:focus:bg-zinc-950 focus:px-2 focus:py-1 rounded-lg focus:outline-none text-xs" />
+    `;
+  }
   if (colKey === 'status_slug') {
     return `
       <select onchange="inlinePatchTask('${task.id}', { status_slug: this.value })"
@@ -1043,6 +1084,13 @@ function renderMobileTaskCard(t, orderedVisibleCols, allColsMap) {
               ${t.project_name ? `<span class="text-[10px] px-2 py-0.5 rounded-full bg-zinc-200 dark:bg-zinc-800 truncate">${escapeHtml(t.project_name)}</span>` : ''}
             </div>
             <p class="text-sm font-bold mt-1 ${isDone ? 'line-through text-zinc-400' : ''}">${escapeHtml(t.title)}</p>
+            ${(t.cliente_contato || t.origem || t.fone_email) ? `
+              <div class="flex flex-wrap items-center gap-1.5 mt-1.5 text-[10px]">
+                ${t.cliente_contato ? `<span class="px-2 py-0.5 rounded-lg bg-orange-500/10 text-orange-400 font-semibold">👤 ${escapeHtml(t.cliente_contato)}</span>` : ''}
+                ${t.origem ? `<span class="px-2 py-0.5 rounded-lg bg-pink-500/10 text-pink-400 font-semibold">📡 ${escapeHtml(t.origem)}</span>` : ''}
+                ${t.fone_email ? `<span class="px-2 py-0.5 rounded-lg bg-purple-500/10 text-purple-400 font-mono">📱 ${escapeHtml(t.fone_email)}</span>` : ''}
+              </div>
+            ` : ''}
           </div>
         </div>
         <div class="flex items-center gap-1 shrink-0">
@@ -1092,6 +1140,13 @@ function renderKanbanView() {
             </div>
           </div>
           <h4 class="text-xs font-bold leading-snug ${isDone ? 'line-through text-zinc-400' : ''}">${escapeHtml(t.title)}</h4>
+          ${(t.cliente_contato || t.origem || t.fone_email) ? `
+            <div class="flex flex-wrap items-center gap-1 text-[10px]">
+              ${t.cliente_contato ? `<span class="px-2 py-0.5 rounded-lg bg-orange-500/10 text-orange-400 font-semibold truncate max-w-[140px]">👤 ${escapeHtml(t.cliente_contato)}</span>` : ''}
+              ${t.origem ? `<span class="px-2 py-0.5 rounded-lg bg-pink-500/10 text-pink-400 font-semibold">📡 ${escapeHtml(t.origem)}</span>` : ''}
+              ${t.fone_email ? `<span class="px-2 py-0.5 rounded-lg bg-purple-500/10 text-purple-400 font-mono truncate max-w-[150px]">📱 ${escapeHtml(t.fone_email)}</span>` : ''}
+            </div>
+          ` : ''}
           ${t.project_name ? `<div class="text-[10px] font-semibold text-zinc-400 flex items-center gap-1.5"><span class="w-2 h-2 rounded-full" style="background:${escapeHtml(t.project_color)}"></span>${escapeHtml(t.project_name)}</div>` : ''}
           <div class="flex items-center justify-between pt-2 border-t border-zinc-100 dark:border-zinc-800/60">
             ${getDueBadge(t)}
@@ -1165,8 +1220,11 @@ function renderListView() {
                 ${escapeHtml(t.title)}
               </span>
             </div>
-            <div class="flex items-center gap-2.5 text-xs">
+            <div class="flex flex-wrap items-center gap-2 text-xs">
               ${renderTodayFlagButton(t)}
+              ${t.cliente_contato ? `<span class="px-2.5 py-0.5 rounded-full bg-orange-500/10 text-orange-400 text-[11px] font-semibold">👤 ${escapeHtml(t.cliente_contato)}</span>` : ''}
+              ${t.origem ? `<span class="px-2.5 py-0.5 rounded-full bg-pink-500/10 text-pink-400 text-[11px] font-semibold">📡 ${escapeHtml(t.origem)}</span>` : ''}
+              ${t.fone_email ? `<span class="px-2.5 py-0.5 rounded-full bg-purple-500/10 text-purple-400 text-[11px] font-mono">📱 ${escapeHtml(t.fone_email)}</span>` : ''}
               ${t.project_name ? `<span class="px-2.5 py-0.5 rounded-full bg-zinc-200/70 dark:bg-zinc-800 text-[11px]">${escapeHtml(t.project_name)}</span>` : ''}
               ${t.assignee_name ? `<span class="text-[11px] text-zinc-400">👤 ${escapeHtml(t.assignee_name)}</span>` : ''}
               ${getDueBadge(t)}
@@ -1272,6 +1330,12 @@ window.openTaskModal = async function(taskId = null, showModal = true) {
     document.getElementById('form-task-due-time').value = '';
     const isTodayEl = document.getElementById('form-task-is-today');
     if (isTodayEl) isTodayEl.checked = Boolean(state.activeView && state.activeView.name === 'Hoje');
+    const cliEl = document.getElementById('form-task-cliente-contato');
+    if (cliEl) cliEl.value = '';
+    const origEl = document.getElementById('form-task-origem');
+    if (origEl) origEl.value = '';
+    const feEl = document.getElementById('form-task-fone-email');
+    if (feEl) feEl.value = '';
     document.getElementById('form-task-recurrence').value = '';
     document.getElementById('form-task-tags').value = '';
     document.getElementById('form-task-description').value = '';
@@ -1299,6 +1363,12 @@ window.openTaskModal = async function(taskId = null, showModal = true) {
     document.getElementById('form-task-due-time').value = t.due_time || '';
     const isTodayEl = document.getElementById('form-task-is-today');
     if (isTodayEl) isTodayEl.checked = Boolean(t.is_today);
+    const cliEl = document.getElementById('form-task-cliente-contato');
+    if (cliEl) cliEl.value = t.cliente_contato || '';
+    const origEl = document.getElementById('form-task-origem');
+    if (origEl) origEl.value = t.origem || '';
+    const feEl = document.getElementById('form-task-fone-email');
+    if (feEl) feEl.value = t.fone_email || '';
     document.getElementById('form-task-recurrence').value = (t.recurrence && t.recurrence.frequency) || '';
     document.getElementById('form-task-tags').value = (t.tags || []).join(', ');
     document.getElementById('form-task-description').value = t.description || '';
@@ -2376,11 +2446,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const quickTodayEl = document.getElementById('quick-task-is-today');
     const isTodayChecked = quickTodayEl ? quickTodayEl.checked : false;
     const isCurrentlyOnTodayView = Boolean(state.activeView && state.activeView.name === 'Hoje');
+    const quickClienteEl = document.getElementById('quick-task-cliente');
+    const quickOrigemEl = document.getElementById('quick-task-origem');
+    const quickFoneEmailEl = document.getElementById('quick-task-fone-email');
     try {
       await api('/api/v1/tasks', {
         method: 'POST',
         body: JSON.stringify({
           title,
+          cliente_contato: quickClienteEl ? quickClienteEl.value.trim() : '',
+          origem: quickOrigemEl ? quickOrigemEl.value : '',
+          fone_email: quickFoneEmailEl ? quickFoneEmailEl.value.trim() : '',
           priority: document.getElementById('quick-task-priority').value,
           project_id: document.getElementById('quick-task-project').value || null,
           due_date: document.getElementById('quick-task-due').value || null,
@@ -2388,6 +2464,9 @@ document.addEventListener('DOMContentLoaded', () => {
         })
       });
       titleInput.value = '';
+      if (quickClienteEl) quickClienteEl.value = '';
+      if (quickOrigemEl) quickOrigemEl.value = '';
+      if (quickFoneEmailEl) quickFoneEmailEl.value = '';
       if (quickTodayEl) quickTodayEl.checked = false;
       showToast('Tarefa adicionada!', 'success');
       await fetchTasks();
@@ -2542,6 +2621,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const isTodayEl = document.getElementById('form-task-is-today');
+    const cliEl = document.getElementById('form-task-cliente-contato');
+    const origEl = document.getElementById('form-task-origem');
+    const feEl = document.getElementById('form-task-fone-email');
     const payload = {
       title: document.getElementById('form-task-title').value,
       color: document.getElementById('form-task-color').value,
@@ -2552,6 +2634,9 @@ document.addEventListener('DOMContentLoaded', () => {
       due_date: document.getElementById('form-task-due-date').value || null,
       due_time: document.getElementById('form-task-due-time').value || null,
       is_today: isTodayEl ? isTodayEl.checked : false,
+      cliente_contato: cliEl ? cliEl.value.trim() : '',
+      origem: origEl ? origEl.value : '',
+      fone_email: feEl ? feEl.value.trim() : '',
       recurrence: recFreq ? { enabled: true, frequency: recFreq, interval: 1 } : null,
       tags,
       participants,
