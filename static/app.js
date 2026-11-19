@@ -1039,6 +1039,7 @@ function renderMobileTaskCard(t, orderedVisibleCols, allColsMap) {
             <div class="flex items-center gap-1.5">
               <span class="font-mono text-[11px] font-bold text-orange-400">#${t.code}</span>
               ${getPriorityBadge(t.priority)}
+              ${t.recurrence && t.recurrence.enabled ? `<span title="Tarefa Recorrente (${escapeHtml(t.recurrence.frequency)})" class="px-1.5 py-0.5 rounded-lg bg-purple-500/15 text-purple-400 text-[10px] font-bold">🔁</span>` : ''}
               ${t.project_name ? `<span class="text-[10px] px-2 py-0.5 rounded-full bg-zinc-200 dark:bg-zinc-800 truncate">${escapeHtml(t.project_name)}</span>` : ''}
             </div>
             <p class="text-sm font-bold mt-1 ${isDone ? 'line-through text-zinc-400' : ''}">${escapeHtml(t.title)}</p>
@@ -1080,6 +1081,7 @@ function renderKanbanView() {
             <div class="flex items-center gap-1.5">
               <span class="font-mono text-[11px] font-bold text-orange-400">#${t.code}</span>
               ${getPriorityBadge(t.priority)}
+              ${t.recurrence && t.recurrence.enabled ? `<span title="Tarefa Recorrente (${escapeHtml(t.recurrence.frequency)})" class="px-1.5 py-0.5 rounded-lg bg-purple-500/15 text-purple-400 text-[10px] font-bold">🔁 ${escapeHtml(t.recurrence.frequency)}</span>` : ''}
             </div>
             <div class="flex items-center gap-1.5">
               ${renderTodayFlagButton(t)}
@@ -1157,6 +1159,7 @@ function renderListView() {
                 class="w-4 h-4 rounded accent-pink-500 cursor-pointer shrink-0" />
               <span class="font-mono text-xs font-bold text-orange-400 shrink-0">#${t.code}</span>
               ${getPriorityBadge(t.priority)}
+              ${t.recurrence && t.recurrence.enabled ? `<span title="Tarefa Recorrente (${escapeHtml(t.recurrence.frequency)})" class="px-1.5 py-0.5 rounded-lg bg-purple-500/15 text-purple-400 text-[10px] font-bold shrink-0">🔁 ${escapeHtml(t.recurrence.frequency)}</span>` : ''}
               <span onclick="openTaskModal('${t.id}')"
                 class="text-sm font-bold truncate cursor-pointer hover:text-pink-400 ${isDone ? 'line-through text-zinc-400' : ''}">
                 ${escapeHtml(t.title)}
@@ -1202,6 +1205,8 @@ window.moveColumnOrder = function(colKey, delta) {
   renderTasksViewport();
 };
 
+window.patchingTaskIds = new Set();
+
 window.quickToggleTaskComplete = async function(taskId, checked) {
   const newStatus = checked ? 'completed' : 'pending';
   await inlinePatchTask(taskId, { status_slug: newStatus });
@@ -1213,6 +1218,9 @@ window.quickToggleTaskToday = async function(taskId, isToday) {
 };
 
 window.inlinePatchTask = async function(taskId, patchObj) {
+  const lockKey = `${taskId}:${Object.keys(patchObj).sort().join(',')}`;
+  if (window.patchingTaskIds.has(lockKey)) return;
+  window.patchingTaskIds.add(lockKey);
   try {
     await api(`/api/v1/tasks/${taskId}`, {
       method: 'PATCH',
@@ -1222,6 +1230,8 @@ window.inlinePatchTask = async function(taskId, patchObj) {
   } catch (e) {
     showToast(e.message, 'error');
     await fetchTasks();
+  } finally {
+    window.patchingTaskIds.delete(lockKey);
   }
 };
 

@@ -492,12 +492,16 @@ def update_task_workflow(
         spawn_recurring_task = False
         if old["status_slug"] != "completed" and new_status == "completed":
             completed_at = now
+            new_is_today = 0
             events.append("task.completed")
             if new_recurrence_json:
                 spawn_recurring_task = True
         elif old["status_slug"] == "completed" and new_status != "completed":
             completed_at = None
             events.append("task.reopened")
+
+        if bool(old.get("is_today")) != bool(new_is_today):
+            changes["is_today"] = {"from": bool(old.get("is_today")), "to": bool(new_is_today)}
 
         if old["assignee_id"] != new_assignee and new_assignee:
             events.append("task.assigned")
@@ -545,49 +549,64 @@ def update_task_workflow(
         if spawn_recurring_task and new_recurrence_json:
             try:
                 rec_rule = json.loads(new_recurrence_json)
-                if isinstance(rec_rule, dict) and rec_rule.get("enabled", True):
+                freq = str(rec_rule.get("frequency") or "").strip().lower() if isinstance(rec_rule, dict) else ""
+                if (
+                    isinstance(rec_rule, dict)
+                    and rec_rule.get("enabled", False) is True
+                    and freq in ("daily", "weekly", "monthly", "custom_days")
+                ):
                     next_due = compute_next_due_date(new_due_date, rec_rule)
-                    max_code = conn.execute("SELECT COALESCE(MAX(code), 100) AS m FROM tasks").fetchone()["m"]
-                    new_rec_id = str(uuid.uuid4())
-                    conn.execute(
+                    # Prevent duplicate spawning if an open task with the same title and due_date already exists
+                    already_spawned = conn.execute(
                         """
-                        INSERT INTO tasks (
-                            id, code, title, description, notes, status_slug, priority,
-                            project_id, assignee_id, participants_json, tags_json, color,
-                            due_date, due_time, is_today, recurrence_json, custom_values_json,
-                            position, created_by, completed_at, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+                        SELECT 1 FROM tasks
+                        WHERE title = ? AND COALESCE(due_date, '') = COALESCE(?, '')
+                          AND status_slug NOT IN ('completed', 'cancelled')
+                          AND id != ?
                         """,
-                        (
+                        (new_title, next_due, task_id),
+                    ).fetchone()
+                    if not already_spawned:
+                        max_code = conn.execute("SELECT COALESCE(MAX(code), 100) AS m FROM tasks").fetchone()["m"]
+                        new_rec_id = str(uuid.uuid4())
+                        conn.execute(
+                            """
+                            INSERT INTO tasks (
+                                id, code, title, description, notes, status_slug, priority,
+                                project_id, assignee_id, participants_json, tags_json, color,
+                                due_date, due_time, is_today, recurrence_json, custom_values_json,
+                                position, created_by, completed_at, created_at, updated_at
+                            ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, NULL, ?, ?)
+                            """,
+                            (
+                                new_rec_id,
+                                int(max_code) + 1,
+                                new_title,
+                                new_desc,
+                                new_notes,
+                                new_priority,
+                                new_project,
+                                new_assignee,
+                                new_participants_json,
+                                new_tags_json,
+                                new_color,
+                                next_due,
+                                new_due_time,
+                                new_recurrence_json,
+                                json.dumps(new_custom, ensure_ascii=False),
+                                new_pos + 1.0,
+                                user["id"],
+                                now,
+                                now,
+                            ),
+                        )
+                        record_task_history(
+                            conn,
                             new_rec_id,
-                            int(max_code) + 1,
-                            new_title,
-                            new_desc,
-                            new_notes,
-                            new_priority,
-                            new_project,
-                            new_assignee,
-                            new_participants_json,
-                            new_tags_json,
-                            new_color,
-                            next_due,
-                            new_due_time,
-                            new_is_today,
-                            new_recurrence_json,
-                            json.dumps(new_custom, ensure_ascii=False),
-                            new_pos + 1.0,
-                            user["id"],
-                            now,
-                            now,
-                        ),
-                    )
-                    record_task_history(
-                        conn,
-                        new_rec_id,
-                        user,
-                        "recurrence_spawned",
-                        {"source_task_id": task_id, "due_date": next_due},
-                    )
+                            user,
+                            "recurrence_spawned",
+                            {"source_task_id": task_id, "due_date": next_due},
+                        )
             except Exception:
                 pass
 
